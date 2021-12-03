@@ -18,7 +18,6 @@ def bin_to_png(inputfile, outputfile):
     arr = []
 
     for num in range(len(data)):
-        print(len(data))
         if data[num] == 49:
             arr.append(255)
         else:
@@ -52,7 +51,7 @@ def main(argv):
     try:
         opts, args = getopt.getopt(argv, "hi:o:", ["ifile=", "ofile="])
     except getopt.GetoptError:
-        print("bin2png.py -i inputfile -o outputfile")
+        print("bin2png.py -i <inputfil>e -o <outputfile>")
         sys.exit(2)
     for opt, arg in opts: #Not sure what your intension was here but I made a quick fix below
         if opt == "-h":
@@ -62,10 +61,6 @@ def main(argv):
             inputfile = arg
         elif opt in ("-o", "--ofile"):
             outputfile = arg
-
-    # Quick fix
-    inputfile = argv[0]
-    outputfile = argv[1]
 
     bin_to_png(inputfile, outputfile)
 
