@@ -10,51 +10,81 @@ from scapy.layers.inet import IP, TCP, UDP
 #scapy.ls(scapy.ICMP)
 #print("IP")
 #scapy.ls(scapy.IP)
-def pcap_to_bin(inputfile, outputfile):
-    f = open(outputfile, "w")
+def pcap_to_bin(inputfile, outputfolder):
     pkts = rdpcap(inputfile)
-    for pkt in pkts:
-        if pkt.haslayer("IP"):
-            if pkt.haslayer("TCP"):
+    line_length = 0;
+    image_arr =[][]
+    i=0
+    for pkt_i in pkts:
+        if pkt_i.haslayer("IP"):
+            if pkt_i.haslayer("TCP"):
                 #print(pkt[TCP].payload)
-                pkt.remove_payload()
+                pkt_i.remove_payload()
     #           print (pkt)
-            elif pkt.haslayer("UDP"):
-                pkt.remove_payload()
+            elif pkt_i.haslayer("UDP"):
+                pkt_i.remove_payload()
     #           print(pkt)
             else:
-                pkt.remove_payload()
+                pkt_i.remove_payload()
     #           print (pkt)
-        pkt_hex=bytes_hex(pkt)
-    
+        pkt_hex=bytes_hex(pkt_i)
     #   print(pkt_hex)
         pkt_bin = bin(int.from_bytes(pkt_hex, byteorder=sys.byteorder))
         pkt_final= pkt_bin[2:]
-        #write to a file
-        f.write(pkt_final)
-        f.write("\n")
-    f.close()
+
+        #establich a line length
+        if line_length ==0:
+            line_length = len(pkt_final)
+        #debug to check if all line lengths are the same
+        #elif line_length != len(pkt_final):
+        #   print('line lengths not equal')
+       
+        #add each bit one at a time to the array
+        for bit_j in range(len(pkt_final)): 
+            if pkt_final[bit_j] == 1:
+                image_arr[i].append(0)
+            elif pkt_final[bit_j] == 0:
+                image_arr[i].append(255)
+            else:
+                print("NON BINARY ELEM")
+
+        #increase line number
+        i+=1
+        #check if line number equals the length of the square packet
+        if i > line_length:
+            #if true, send array to be turned into an image and clear the array
+            create_image(outputfolder, image_arr)
+            #reset i
+            image arr = [][]
+            i=0
+
+        #else continue reading in lines
+
+    #if i< line length then add lines to pad the bottom of the array until there are enought lines to send the array to the image generation
+def creat_image(outputfolder, image_arr):
+
+
 def main(argv):
     inputfile = ''
-    outputfile = ''
+    outputfolder = ''
 #    print(f"Name of the script      : {sys.argv[0]=}")
 #    print(f"Arguments of the script : {sys.argv[1:]=}")  
     try:
-        opts, args = getopt.getopt(argv, "hi:o:" , ["ifile=","ofile="])
+        opts, args = getopt.getopt(argv, "hi:o:" , ["ifile=","ofolder="])
     except getopt.GetoptError:
-        print ('pcap2bin.py -i <inputfile> -o <outputfile>')
+        print ('pcap2bin.py -i <pcap inputfile> -o <outputfolder>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == "-h":
-            print ('pcap2bin.py -i <inputfile> -o <outputfile>')
+            print ('pcap2bin.py -i <pcap inputfile> -o <outputfolder>')
             sys.exit()
         elif opt in ("-i", "--ifile"):
             inputfile = arg
-        elif opt in ("-o", "--ofile"):
-            outputfile = arg
+        elif opt in ("-o", "--ofolder"):
+            outputfolder = arg
     print('Input:', inputfile)
-    print('Output:', outputfile)
-    pcap_to_bin(inputfile, outputfile)
+    print('Output:', outputfolder)
+    pcap_to_bin(inputfile, outputfolder)
 if __name__ == "__main__":
     main(sys.argv[1:])
 # Check the type of packet, there should only be data in TCP packets, UDP could also have them. Only have to check TCP before taking out payload, else do normal bin extract
