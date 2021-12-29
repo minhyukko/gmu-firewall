@@ -13,6 +13,7 @@ from scapy.layers.inet import IP, TCP, UDP
 def pcap_to_bin(inputfile, outputfolder):
     pkts = rdpcap(inputfile)
     line_length = 0;
+    file_num=0
     image_arr =[][]
     i=0
     for pkt_i in pkts:
@@ -53,16 +54,23 @@ def pcap_to_bin(inputfile, outputfolder):
         #check if line number equals the length of the square packet
         if i > line_length:
             #if true, send array to be turned into an image and clear the array
-            create_image(outputfolder, image_arr)
+            create_image(outputfolder, image_arr, file_num)
             #reset i
-            image arr = [][]
+            image_arr = [][]
             i=0
 
         #else continue reading in lines
-
+#if the number of lines is less than the line length pad the end of the image until the square is made
+while i< linelength:
+    filler_line = "0"* line_length
+    image_arr[
     #if i< line length then add lines to pad the bottom of the array until there are enought lines to send the array to the image generation
-def creat_image(outputfolder, image_arr):
-
+def create_image(outputfolder, image_arr, file_num):
+    # write an image to the file and number the file
+    outputfile = outputfolder + "" + file_num
+    cv2.imwrite(ouputfile, image_arr)
+    file_num = 1+file_num
+    return
 
 def main(argv):
     inputfile = ''
