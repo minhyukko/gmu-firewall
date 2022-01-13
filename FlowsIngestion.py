@@ -1,7 +1,16 @@
 
+import os
 import json
 import scapy.all as scapy
 from xml.etree import ElementTree
+import binascii
+import socket
+import math
+
+import sys
+import getopt
+from scapy.utils import rdpcap, wrpcap
+from scapy.layers.inet import IP, TCP, UDP 
 
 class FlowTime:# Time Object To allow comparison from Flow Formatting to a comparable time object
     def __init__(self, t):
@@ -56,9 +65,24 @@ class FlowNode:#Linked List Node used within hashmap
     def __repr__(self):#String representation of Node used for debugging
         return "Tag: " + str(self.tag)
 
-
-
-
+def pkt_to_bin(pkt):
+    if pkt.haslayer("IP"):
+        if pkt.haslayer("TCP"):
+            #print(pkt[TCP].payload)
+            pkt.remove_payload()
+#           print (pkt)
+        elif pkt.haslayer("UDP"):
+            pkt.remove_payload()
+#           print(pkt)
+        else:
+            pkt.remove_payload()
+#           print (pkt)
+    pkt_hex=bytes_hex(pkt)
+    
+#   print(pkt_hex)
+    pkt_bin = bin(int.from_bytes(pkt_hex, byteorder=sys.byteorder))
+    pkt_final= pkt_bin[2:]
+    return pkt_final
 
 
 size = 110513#Constant size used for hashmap
@@ -89,6 +113,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.count = 0#Current Number of completed flows used for json naming
 
     def add(self, flow):#Add new node to the hashmap
+        print("Adding")
         key = flow[dic['source']] + flow[dic['destination']]
         key = hash(key)
         if key < 0 :
@@ -108,10 +133,14 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 node = node.next
 
     def addPacket(self, pkt):#Adds a packet to the corresponding flow
-        source = pkt['TCP'].source
-        destination = pkt['TCP'].destination
+        source = pkt['IP'].src
+        destination = pkt['IP'].dst
         key = source + destination 
+        #print("Key: ", key)
         key = hash(key)
+        add = None
+        o = False
+        t = False
         if key < 0:
             key *= -1
         pos = key % self.size
@@ -124,24 +153,37 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         pos2 = key2 % self.size
 
         one = self.arr[pos]
-        if not one.key == key:
-            while(not one.next == None):
-                if one.next.key == key:
+        if not (one == None):
+            o = True
+            if not one.key == key:
+                while(not one.next == None):
+                    if one.next.key == key:
+                        one = one.next
+                        break
                     one = one.next
-                    break
-                one = one.next
-        two = self.arr[pos]
-        if not two.key == key:
-            while(not two.next == None):
-                if two.next.key == key:
+        two = self.arr[pos2]
+        if not (two == None):
+            t = True
+            if not two.key == key:
+                while(not two.next == None):
+                    if two.next.key == key:
+                        two = two.next
+                        break
                     two = two.next
-                    break
-                two = two.next
-        if one.startDateTime < two.startDateTime: 
-            add = one
-        else:
+        if o == True and t == True:
+            if one.startDateTime < two.startDateTime: 
+                add = one
+            else:
+                add = two
+        elif o == True and t == False:
+            add = one 
+        elif t == True and o == False:
             add = two
-        add.arr.append(pkt)# Append Bits
+       # print("Add: ",add)
+        if add == None:
+            print("Failed")
+            return
+        add.packets.append(pkt_to_bin(pkt))# Append Bits
 
 
     def remove(self, key):#Removes a flow and saves the flow in json format
@@ -212,23 +254,28 @@ for f in inputs:
     for y in vals:
         x.append(f.find(y).text)
     List.append(x)
-print(List[0:4])
+#print(List[0:4])
 
 hm = HashMap(110513, "Infiltrating_Transfer")
 
 #print(List)
 l = []
 cc = 0
+for i in range(len(List)-1, -1, -1):
+    if List[i][dic['protocolName']] == 'tcp_ip':
+        continue
+    else:
+        List.pop(i)
+#print("Current Size: ", len(List))
 for flow in List:
     #print("Here")
-    if cc == 6:
-        break
     hm.add(flow)
     l.append(flow[dic['source']] + flow[dic['destination']])
-    print("Source: ", flow[dic['source']], "Destination: ",flow[dic['destination']] )
+    #print("Source: ", flow[dic['source']], "Destination: ",flow[dic['destination']] )
     #print(l[-1])
     cc += 1
-print(l)
+#print("Size of List: ", len(List))
+'''print(l)
 for i in l:
     h = hash(i)
     if h < 0:
@@ -246,7 +293,31 @@ hm.remove((hash(l[0])*-1) if hash(l[0]) < 0 else hash(l[0]))
 print(hm)
 hm.remove((hash(l[0])*-1) if hash(l[0]) < 0 else hash(l[0]))
 print(hm)
+'''
+
+#print("\n\n")
+#print(hm)
+#print("\n\n")
+def packet_values(pkt):#Read packet by packet from pcap and compare values
+    global hm
+    num_in_list_1 = 0
+    if 'IP' not in pkt:
+        return True
+    if 'TCP' not in pkt:
+        return True
+    key = pkt['IP'].src + pkt['IP'].dst
+    #for x in List:
+     #   key2 = x[dic['source']] + x[dic['destination']]
+      #  if key == key2:
+            #print("Found Match")
+       #     break
+
+    #pkt.show()
+    hm.addPacket(pkt)
+
+    total = 0
+    return True
 
 
-
+f = scapy.sniff(offline="testbed-13jun.pcap", prn=packet_values, store=0)#Reads in 4 packets from pcap file passed in
 
