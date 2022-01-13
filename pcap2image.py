@@ -64,7 +64,6 @@ def pcap_to_bin(inputfile, outputfolder):
         i+=1
         #check if line number equals the length of the square packet
         if i == line_length:
-            print("complete pic")
             #if true, send array to be turned into an image and clear the array
             file_num+=1
             create_image(outputfolder, image_arr, file_num)
