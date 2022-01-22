@@ -9,8 +9,12 @@ import math
 
 import sys
 import getopt
+
+import cv2
+import numpy
 from scapy.utils import rdpcap, wrpcap
-from scapy.layers.inet import IP, TCP, UDP 
+from scapy.layers.inet import IP, TCP, UDP
+from scapy import compat
 
 class FlowTime:# Time Object To allow comparison from Flow Formatting to a comparable time object
     def __init__(self, t):
@@ -66,20 +70,24 @@ class FlowNode:#Linked List Node used within hashmap
         return "Tag: " + str(self.tag)
 
 def pkt_to_bin(pkt):
+    line_length = 0;
+    file_num=0
+    image_arr =[]
+    i=0
+    
     if pkt.haslayer("IP"):
         if pkt.haslayer("TCP"):
             #print(pkt[TCP].payload)
             pkt.remove_payload()
-#           print (pkt)
+            #print (pkt)
         elif pkt.haslayer("UDP"):
             pkt.remove_payload()
-#           print(pkt)
+            #print(pkt)
         else:
             pkt.remove_payload()
-#           print (pkt)
-    pkt_hex=bytes_hex(pkt)
-    
-#   print(pkt_hex)
+            #print (pkt)
+    pkt_hex=compat.bytes_hex(pkt)
+    #print(pkt_hex)
     pkt_bin = bin(int.from_bytes(pkt_hex, byteorder=sys.byteorder))
     pkt_final= pkt_bin[2:]
     return pkt_final
@@ -98,7 +106,8 @@ def writeJSON(flow, count, attack):# Saves Completed Flow Node into json formatt
     flow_dic['packets'] = flow.packets 
     flow_dic['Tag'] = flow.tag
     flow_dic['key'] = flow.key
-    flow_dic['name'] = 'Flow_' + str(count) + '_attack_' + attack + ".json"
+    flow_dic['name'] = './flows/Flow_' + str(count) + '_attack_' + attack + ".json"
+    print("Writing JSON Name: ",flow_dic['name'])
     with open(flow_dic['name'], 'w') as f:
         json.dump(flow_dic, f)
         f.close()
@@ -113,7 +122,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.count = 0#Current Number of completed flows used for json naming
 
     def add(self, flow):#Add new node to the hashmap
-        print("Adding")
+       # print("Adding")
         key = flow[dic['source']] + flow[dic['destination']]
         key = hash(key)
         if key < 0 :
@@ -157,19 +166,29 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             o = True
             if not one.key == key:
                 while(not one.next == None):
-                    if one.next.key == key:
+                    if one.next.key == key and one.source_num > 0:
                         one = one.next
                         break
                     one = one.next
+            if one.source_num > 0:
+                one.source_num -= 1
+                one.total_num_packets -= 1
+                if one.total_num_packets == 0:
+                    self.remove(one.key)
         two = self.arr[pos2]
         if not (two == None):
             t = True
             if not two.key == key:
                 while(not two.next == None):
-                    if two.next.key == key:
+                    if two.next.key == key and two.destination_num > 0:
                         two = two.next
                         break
                     two = two.next
+            if two.destination_num > 0:
+                two.destination_num -= 1
+                two.total_num_packets -= 1
+                if two.total_num_packets == 0:
+                    self.remove(two.key)
         if o == True and t == True:
             if one.startDateTime < two.startDateTime: 
                 add = one
@@ -274,6 +293,15 @@ for flow in List:
     #print("Source: ", flow[dic['source']], "Destination: ",flow[dic['destination']] )
     #print(l[-1])
     cc += 1
+count = 0
+for i in hm.arr:
+    if not (i == None):
+        temp = i
+        count += 1
+        while not (temp == None):
+            temp = temp.next
+            count += 1
+print("Number of Flows: ", len(List), " Number of Flows Added: ", count)
 #print("Size of List: ", len(List))
 '''print(l)
 for i in l:
