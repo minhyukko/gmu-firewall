@@ -20,9 +20,9 @@ class FlowTime:# Time Object To allow comparison from Flow Formatting to a compa
     def __init__(self, t):
         self.day = int(t[8:10])
         self.hour = int(t[11:13])
-        self.min = t[14:16]
-        self.sec = t[17:19] 
-
+        self.min = int(t[14:16])
+        self.sec = int(t[17:19]) 
+    # What happens to the time comparison if the two times are the same
     def __lt__(self, other):
         if self.day == other.day:
             if self.hour == other.hour:
@@ -48,7 +48,7 @@ class FlowTime:# Time Object To allow comparison from Flow Formatting to a compa
     def __repr__(self):# String representation of time used for saving in json
         ans = ""
         ans += str(self.day) + "T"
-        ans+= str(self.hour) + ":"
+        ans += str(self.hour) + ":"
         ans += str(self.min) + ":"
         ans += str(self.sec)
         return ans
@@ -142,34 +142,43 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 node = node.next
 
     def addPacket(self, pkt):#Adds a packet to the corresponding flow
+        
+        add = None
+        # if o and t are false there is some issue with adding the packet to the flows
+        # o means that there is a src to dst flow that matches the current packet src and dst
+        # t means that there is a dst to src flow that matches the current packet src and dst
+        o = False
+        t = False
+
         source = pkt['IP'].src
         destination = pkt['IP'].dst
+        
+        #find key for src to dst direction flow
         key = source + destination 
         #print("Key: ", key)
         key = hash(key)
-        add = None
-        o = False
-        t = False
         if key < 0:
             key *= -1
+        # self here refers to th ehashmap 
         pos = key % self.size
 
-
+        # find key for dst to src direction flow
         key2 = destination + source
         key2 = hash(key2)
         if key2 < 0:
             key2 *= -1
         pos2 = key2 % self.size
 
+        
         one = self.arr[pos]
         if not (one == None):
             o = True
             if not one.key == key:
                 while(not one.next == None):
-                    if one.next.key == key and one.source_num > 0:
-                        one = one.next
+                    if one.key == key and one.source_num > 0:                      
                         break
                     one = one.next
+            # Possible logic error V
             if one.source_num > 0:
                 one.source_num -= 1
                 one.total_num_packets -= 1
@@ -180,16 +189,17 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             t = True
             if not two.key == key:
                 while(not two.next == None):
-                    if two.next.key == key and two.destination_num > 0:
-                        two = two.next
+                    if two.key == key and two.destination_num > 0:
                         break
                     two = two.next
+            # POssible Logic error V
             if two.destination_num > 0:
                 two.destination_num -= 1
                 two.total_num_packets -= 1
                 if two.total_num_packets == 0:
                     self.remove(two.key)
         if o == True and t == True:
+            #needs to add some kind of incremental value to flow because start times ( and end times) sould be exactly the same
             if one.startDateTime < two.startDateTime: 
                 add = one
             else:
@@ -333,7 +343,7 @@ def packet_values(pkt):#Read packet by packet from pcap and compare values
         return True
     if 'TCP' not in pkt:
         return True
-    key = pkt['IP'].src + pkt['IP'].dst
+    #key = pkt['IP'].src + pkt['IP'].dst
     #for x in List:
      #   key2 = x[dic['source']] + x[dic['destination']]
       #  if key == key2:
