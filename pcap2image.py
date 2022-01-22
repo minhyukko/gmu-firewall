@@ -34,6 +34,7 @@ def pcap_to_bin(inputfile, outputfolder):
                 pkt_i.remove_payload()
                 #print (pkt)
         #print(inspect.getsourcefile(bytes_hex))
+        #scapy.compat.bytes_hex
         pkt_hex=bytes_hex(pkt_i)
         #print(pkt_hex)
         pkt_bin = bin(int.from_bytes(pkt_hex, byteorder=sys.byteorder))
