@@ -70,22 +70,9 @@ class FlowNode:#Linked List Node used within hashmap
         return "Tag: " + str(self.tag)
 
 def pkt_to_bin(pkt):
-    line_length = 0;
-    file_num=0
-    image_arr =[]
-    i=0
+    #Should we have the data in this packet representation?
+    pkt.remove_payload()
     
-    if pkt.haslayer("IP"):
-        if pkt.haslayer("TCP"):
-            #print(pkt[TCP].payload)
-            pkt.remove_payload()
-            #print (pkt)
-        elif pkt.haslayer("UDP"):
-            pkt.remove_payload()
-            #print(pkt)
-        else:
-            pkt.remove_payload()
-            #print (pkt)
     pkt_hex=compat.bytes_hex(pkt)
     #print(pkt_hex)
     pkt_bin = bin(int.from_bytes(pkt_hex, byteorder=sys.byteorder))
@@ -159,7 +146,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         key = hash(key)
         if key < 0:
             key *= -1
-        # self here refers to th ehashmap 
+        # self here refers to the hashmap 
         pos = key % self.size
 
         # find key for dst to src direction flow
@@ -169,50 +156,71 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             key2 *= -1
         pos2 = key2 % self.size
 
-        
+        #find the possible flows for key one and key two        
         one = self.arr[pos]
         if not (one == None):
-            o = True
-            if not one.key == key:
-                while(not one.next == None):
-                    if one.key == key and one.source_num > 0:                      
-                        break
-                    one = one.next
-            # Possible logic error V
-            if one.source_num > 0:
-                one.source_num -= 1
-                one.total_num_packets -= 1
-                if one.total_num_packets == 0:
-                    self.remove(one.key)
+            temp = one
+            while(not temp.next == None):
+                if temp.key == key and temp.source_num > 0:                      
+                    one = temp
+                    o = True
+                    break
+                temp = temp.next
         two = self.arr[pos2]
         if not (two == None):
-            t = True
-            if not two.key == key:
-                while(not two.next == None):
-                    if two.key == key and two.destination_num > 0:
-                        break
-                    two = two.next
-            # POssible Logic error V
-            if two.destination_num > 0:
-                two.destination_num -= 1
-                two.total_num_packets -= 1
-                if two.total_num_packets == 0:
+            temp = two
+            while(not temp.next == None):
+                if temp.key == key and temp.destination_num > 0:
+                    two = temp
+                    t = True
+                    break
+                temp = temp.next
+        if o and t:
+            if one.startdateTime< two.startDateTime:
+                #take key one
+                #add packet to flow one
+                one.packets.append(pkt_to_bin(pkt))
+                #reduce num total and src packets by one
+                one.total_num_packets -=1
+                one.source_num-=1
+                #if num tot < 0 remove flow
+                if one.total_num_packets==0:
+                    self.remove(one.key)
+            elif two.startDateTime < one.startDateTime:
+                #take key two
+                #add packet to flow two
+                two.packets.append(pkt_to_bin(pkt))
+                #remove num total and dst packets by one
+                two.total_num_packets -=1
+                two.source_num-=1
+                #if num tot < 0 remove flow
+                if two.total_num_packets==0:
                     self.remove(two.key)
-        if o == True and t == True:
-            #needs to add some kind of incremental value to flow because start times ( and end times) sould be exactly the same
-            if one.startDateTime < two.startDateTime: 
-                add = one
             else:
-                add = two
-        elif o == True and t == False:
-            add = one 
-        elif t == True and o == False:
-            add = two
-       # print("Add: ",add)
-        if add == None:
+                print("Start times equal")
+        elif o:
+            #take key one
+            #add packet to flow one
+            one.packets.append(pkt_to_bin(pkt))
+            #reduce num total and src packets by one
+            one.total_num_packets -=1
+            one.source_num-=1
+            #if num tot < 0 remove flow
+            if one.total_num_packets==0:
+                self.remove(one.key)
+        elif t:
+            #take key two
+            #add packet to flow two
+            two.packets.append(pkt_to_bin(pkt))
+            #remove num total and dst packets by one
+            two.total_num_packets -=1
+            two.source_num-=1
+            #if num tot < 0 remove flow
+            if two.total_num_packets==0:
+                self.remove(two.key)
+        else:
             print("Failed")
             return
-        add.packets.append(pkt_to_bin(pkt))# Append Bits
 
 
     def remove(self, key):#Removes a flow and saves the flow in json format
