@@ -192,7 +192,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 two.packets.append(pkt_to_bin(pkt))
                 #remove num total and dst packets by one
                 two.total_num_packets -=1
-                two.source_num-=1
+                two.destination_num-=1
                 #if num tot < 0 remove flow
                 if two.total_num_packets==0:
                     self.remove(two.key)
@@ -214,7 +214,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             two.packets.append(pkt_to_bin(pkt))
             #remove num total and dst packets by one
             two.total_num_packets -=1
-            two.source_num-=1
+            two.destination_num-=1
             #if num tot < 0 remove flow
             if two.total_num_packets==0:
                 self.remove(two.key)
