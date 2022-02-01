@@ -6,7 +6,7 @@ from xml.etree import ElementTree
 import binascii
 import socket
 import math
-
+import datetime
 import sys
 import getopt
 
@@ -20,8 +20,13 @@ class FlowTime:# Time Object To allow comparison from Flow Formatting to a compa
     def __init__(self, t):
         self.day = int(t[8:10])
         self.hour = int(t[11:13])
-        self.min = t[14:16]
-        self.sec = t[17:19] 
+        self.min = int(t[14:16])
+        self.sec = int(t[17:19])
+    def __eq__(self, other):
+        if self.day == other.day and self.hour == other.hour and self.min == other.min and self.sec == other.sec:
+            return True
+        else:
+            return False
 
     def __lt__(self, other): # Allows for less than comparisons to be used within FlowTime Object
         if self.day == other.day:
@@ -45,6 +50,28 @@ class FlowTime:# Time Object To allow comparison from Flow Formatting to a compa
             return True
         else:
             return False
+    def __gt__(self, other): # Allows for less than comparisons to be used within FlowTime Object
+        if self.day == other.day:
+            if self.hour == other.hour:
+                if self.min  == other.min:
+                    if self.sec > other.sec:
+                        return True
+                    else:
+                        return False
+                elif self.sec > other.sec:
+                    return True
+                else:
+                    return False
+
+            elif self.hour > other.hour:
+                return True
+            else:
+                return False
+        elif self.day > other.day:
+
+            return True
+        else:
+            return False
     def __repr__(self):# String representation of time used for saving in json
         ans = ""
         ans += str(self.day) + "T"
@@ -54,7 +81,7 @@ class FlowTime:# Time Object To allow comparison from Flow Formatting to a compa
         return ans
 
 class FlowNode:#Linked List Node used within hashmap
-    def __init__(self, source, destination, total_num_packets, source_num, destination_num, startDateTime, tag, key):# Attributes in Node correspond to FLow attributes from the XML
+    def __init__(self, source, destination, total_num_packets, source_num, destination_num, startDateTime, stopDateTime, tag, key):# Attributes in Node correspond to FLow attributes from the XML
         self.source = source# Source IP Address
         self.destination = destination# Destination IP Address
         self.key = key
@@ -62,6 +89,7 @@ class FlowNode:#Linked List Node used within hashmap
         self.source_num = source_num# number of source packets (Source->Destination)
         self.destination_num = destination_num# number of destination packets (Destination->Source)
         self.startDateTime = FlowTime(startDateTime)
+        self.stopDateTime = FlowTime(stopDateTime)
         self.packets = []# List of binary strings representing each packet
         self.tag = tag# Benign or Malicious attack type of tcp flow
         self.next = None# The Next Node
@@ -106,7 +134,7 @@ def writeJSON(flow, count, attack):# Saves Completed Flow Node into json formatt
     flow_dic['packets'] = flow.packets 
     flow_dic['Tag'] = flow.tag
     flow_dic['key'] = flow.key
-    flow_dic['name'] = './Flows22/Flow_' + str(count) + '_attack_' + attack + ".json"
+    flow_dic['name'] = './Flows33/Flow_' + str(count) + '_attack_' + attack + ".json"
     #print("Writing JSON Name: ",flow_dic['name'])
     with open(flow_dic['name'], 'w') as f:
         json.dump(flow_dic, f)
@@ -116,6 +144,7 @@ def writeJSON(flow, count, attack):# Saves Completed Flow Node into json formatt
 
 class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
     def __init__(self, size, attack):
+        self.entries = 0
         self.size = size# Size of hashmap
         self.arr = [None] * self.size# Create array that i
         self.attack = attack# Attack type for the days Flow
@@ -123,30 +152,36 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
 
     def add(self, flow):#Add new node to the hashmap
        # print("Adding")
+        added = False
         key = flow[dic['source']] + flow[dic['destination']]
         key = hash(key)
         if key < 0 :
             key *= -1
         tag = "Normal" if flow[dic['Tag']] == 'Normal' else self.attack
-        fn = FlowNode(flow[dic['source']], flow[dic['destination']], int(flow[dic['totalDestinationBytes']]) + int(flow[dic['totalSourceBytes']]), int(flow[dic['totalSourceBytes']]), int(flow[dic['totalDestinationBytes']]), flow[dic['startDateTime']], tag, key)
+        fn = FlowNode(flow[dic['source']], flow[dic['destination']], int(flow[dic['totalDestinationBytes']]) + int(flow[dic['totalSourceBytes']]), int(flow[dic['totalSourceBytes']]), int(flow[dic['totalDestinationBytes']]), flow[dic['startDateTime']], flow[dic['stopDateTime']], tag, key)
         pos = key % self.size
 
         if self.arr[pos] == None:
             self.arr[pos] = fn
+            added = True
         else:
             node = self.arr[pos]
             while(not (node == None)):
                 if(node.next == None):
                     node.next = fn
+                    added = True
                     break
                 node = node.next
+        if added == False:
+            print("Failed to Add Flow")
+
+
     def containsFlow(self, key):#Checks to see if a flow exists within the hm
         pos = key % self.size
         temp = self.arr[pos]
         global List
 
         if temp == None:
-            print()
             #sys.exit()
             return False
 
@@ -158,14 +193,13 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     if temp.key == key:
                         return True
                     temp = temp.next
-        print("Not Found")
         return False
 
     def getFlow(self, key):
         pos = key % self.size
         temp = self.arr[pos]
         if temp == None:
-            print("Non Existent Flow22")
+            print("Flow Not Found")
             return None
         else:
             if temp.key == key:
@@ -175,8 +209,20 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     if temp.key == key:
                         return temp
                     temp = temp.next
-        print("Not Found")
         return None
+    def getFlows(self, key):
+        ans = []
+        pos = key % self.size
+        temp = self.arr[pos]
+        if temp == None:
+            print("Flow Not Found")
+            return []
+        else:
+            while not (temp == None):
+                if temp.key == key:
+                    ans.append(temp)
+                temp = temp.next
+        return ans
     def addPacket(self, pkt):#Adds a packet to the corresponding flow
         global l
         source = pkt['IP'].src
@@ -185,6 +231,12 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         key = source + destination 
         #print("Key: ", key)
         key = hash(key)
+       # print("Adding Packet Time")
+       # print("Packet Time: ", pkt.time)
+       # print("Final Packet Time")
+        p_time = datetime.datetime.fromtimestamp(pkt.time)
+        time = FlowTime(p_time.strftime('%Y-%m-%dT%H:%M:%S'))
+        #print("Time Is: ", time.strftime('%Y-%m-%d %H:%M:%S'))
 
         add = None
 
@@ -197,12 +249,49 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         if key2 < 0:
             key2 *= -1
 
-    
+        
 
-        one = self.getFlow(key)
-        two = self.getFlow(key2)
-
-        if (not(one == None)) and (not(two == None)):# if both one and two have potential flows then pick the one with the smaller start tim
+        one = self.getFlows(key)
+        two = self.getFlows(key2)
+       # print("One Size: ",len(one))
+       # print("Two Size: ",len(two))
+        if ((len(one) > 0)) and ((len(two) > 0)):
+            t1 = None
+            t2 = None
+            for x in one:
+                if (x.startDateTime < time or x.startDateTime == time) and (time < x.stopDateTime or time == x.stopDateTime):
+                    t1 = x
+                    break
+            for x in two:
+                if (x.startDateTime < time or x.startDateTime == time) and (time < x.stopDateTime or time == x.stopDateTime):
+                    t2 = x
+                    break
+            if not (t1 == None) and not (t2 == None):
+                if t1.startDateTime < t2.startDateTime:
+                    add = one 
+                    add.source_num -= 1 
+                    add.total_num_packets -= 1 
+                else: 
+                    add = two 
+                    add.destination_num -= 1 
+                    add.total_num_packets -= 1 
+        elif ((len(one) > 0)):
+            for x in one:
+                if (x.startDateTime < time or x.startDateTime == time) and (time < x.stopDateTime or time == x.stopDateTime):
+                    add = x
+                    add.source_num -= 1 
+                    add.total_num_packets -= 1 
+                    break
+        elif ((len(two) >0)):
+            for x in two:
+                if (x.startDateTime < time or x.startDateTime == time) and (time < x.stopDateTime or time == x.stopDateTime):
+                    add = x
+                    add.source_num -= 1 
+                    add.total_num_packets -= 1 
+                    break
+        else:
+            print("Packet Can't Find Home")
+        '''if (not(one == None)) and (not(two == None)):# if both one and two have potential flows then pick the one with the smaller start tim
             if one.startDateTime < two.startDateTime:
                 add = one
                 add.source_num -= 1 #Decrement source and total number of packets
@@ -221,7 +310,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         elif (not(two == None)):
             add = two
             add.destination_num -= 1#Decrement destination and total number of packets
-            add.total_num_packets -= 1
+            add.total_num_packets -= 1'''
 
 
        # print("Add: ",add)
