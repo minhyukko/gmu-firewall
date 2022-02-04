@@ -1,8 +1,9 @@
 import sys
 import getopt
-import cv2
 import os
+import shutil
 import numpy
+import cv2
 from scapy.all import *
 from scapy.utils import rdpcap, wrpcap
 from scapy.layers.inet import IP, TCP, UDP 
@@ -115,8 +116,33 @@ def main(argv):
     inputfile = os.path.abspath(os.getcwd())+"/"+inputfile    
     print('Input:', inputfile)
     print('Output:', outputfolder)
-    os.mkdir(outputfolder)
-    os.chdir(outputfolder)
+
+    duplicate = 0
+
+    for file_name in os.listdir():
+        if file_name == outputfolder:
+            duplicate = 1
+            break
+    if duplicate:
+        print("Output folder already exists\nChoose how to proceed:\nCLEAR current folder\nADD to current folder\nEXIT")
+        input_string = input()
+        input_string = input_string.lower()
+        input_string = input_string.replace(" ", "")
+        if input_string == 'clear':
+            shutil.rmtree(outputfolder)
+            os.mkdir(outputfolder)
+            os.chdir(outputfolder)
+        elif input_string == 'add':
+            os.chdir(outputfolder)
+        elif input_string == 'exit':
+            print("Exiting")
+            sys.exit(1)
+        else:
+            print("Unknown command\nExiting")
+            sys.exit(2)
+    else:
+        os.mkdir(outputfolder)
+        os.chdir(outputfolder)
     pcap_to_bin(inputfile, outputfolder)
     print("Complete")
 if __name__ == "__main__":
