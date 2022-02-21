@@ -95,6 +95,25 @@ def create_image(outputfolder, image_arr, file_num):
     saved_image = cv2.imwrite(outputfile, image_arr)
     return
 
+def flags(inputfile):
+    pkts = rdpcap(inputfile)
+    pkts[0].remove_payload()
+    FIN = 0x01
+    SYN = 0x02
+    RST = 0x04
+    PSH = 0x08
+    ACK = 0x10
+    URG = 0x20
+    ECE = 0x40
+    CWR = 0x80
+    print(pkts[0])
+    #print(pkts[0]['TCP'].flags)
+    for p in pkts:
+        if(p.haslayer(TCP)):
+            print(p['TCP'].flags)
+            break
+
+
 def main(argv):
     inputfile = ''
     outputfolder = ''
@@ -143,8 +162,10 @@ def main(argv):
     else:
         os.mkdir(outputfolder)
         os.chdir(outputfolder)
-    pcap_to_bin(inputfile, outputfolder)
+    #pcap_to_bin(inputfile, outputfolder)
+    flags(inputfile)
     print("Complete")
+
 if __name__ == "__main__":
     main(sys.argv[1:])
 # Check the type of packet, there should only be data in TCP packets, UDP could also have them. Only have to check TCP before taking out payload, else do normal bin extract

@@ -25,6 +25,7 @@ def add_pkt(pkt, img_arr=g_img_arr, row = g_row):
     else:
         return
     pkt_hex=bytes_hex(pkt)
+    #from here on out is the image generation, not needed if I can just send out hex / binary elements
     pkt_bin = bin(int.from_bytes(pkt_hex,byteorder=sys.byteorder))
     pkt_final=pkt_bin[2:]
     for bit in range(222):
@@ -42,7 +43,7 @@ def add_pkt(pkt, img_arr=g_img_arr, row = g_row):
         create_image(g_img_arr)
         g_img_arr = numpy.empty([222,222,3])
         g_row = 0
-#
+#NOT NEEDED FOR ANALYSIS REDO
 def create_image(img_arr):
     global g_file_num
     temp_img_arr = numpy.asarray(img_arr)
@@ -52,8 +53,8 @@ def create_image(img_arr):
     saved_image = cv2.imwrite(outputfile,temp_img_arr)
     return
     
-    
 #create the file to store the temporary images (and other outputs)
+#NOT NEEDED FOR ANALYSIS TYPE ONE
 def setup():
    outputfolder = "temp_image_folder"
    for file_name in os.listdir():
