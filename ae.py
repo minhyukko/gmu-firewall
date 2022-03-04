@@ -1,10 +1,15 @@
 """
 TODO:
 - get src/dest IP
-- add other types of attacks to tag_to_ix (if needed)
 - implement IPC (run will be communicating directly with socket)
-- add stopping condition based on validation 
+- add stopping condition based on validation
 - decide whether or not to use transfer learning
+- use checksum
+- perform val split
+- DUMMY AE
+- decide attack |-> response dictionary
+- set firewall to default state
+(save firewall configuration)
 """
 
 import torch
@@ -35,12 +40,21 @@ Set model hyperparameters
 torch.manual_seed(42)
 BATCH_SIZE = 64
 SHUFFLE = True
-NUM_WORKERS = 6
+NUM_WORKERS = 4
 MAX_EPOCHS = 100
 
 """
 The following classes and functions are concerned with data ingestion.
 """
+
+def partition_data(fname):
+	"""
+	Partitions data 80/20 into training and validation sets
+
+	:param fname: (str) -> the filename of the data
+	"""
+
+	pass
 
 class NetworkFlowDataset(Dataset):
 	def __init__(self, fname):
@@ -50,68 +64,76 @@ class NetworkFlowDataset(Dataset):
 		self.fname = os.path.join(DATA_DIR, fname)
 		self.transform = transform
 
-		def __len__(self):
-			"""
-			Returns the number of elements in the dataset
+	def __len__(self):
+		"""
+		Returns the number of elements in the dataset
 
-			:return: (int) -> the dataset length
-			"""
+		:return: (int) -> the dataset length
+		"""
 
-			return len(self.flows)
+		return len(self.flows)
 
-		def __getitem__(self, idx):
-			"""
-			Gets the requested item from JSON data file.
-			The JSON has the following nested structure:
-			{
-				"Training" OR "Testing": [
-					{
-						"packets" = [p_0, ....., p_n] where each p_i is a bit string
-						"Tag": "t"
-					}
+	def __getitem__(self, idx):
+		"""
+		Gets the requested item from JSON data file.
+		The JSON has the following nested structure:
+		{
+			"Training" OR "Testing": [
+				{
+					"packets" = [p_0, ....., p_n] where each p_i is a bit string
+					"Tag": "t"
+				}
 
-					{
-						packets = [p_0, ....., p_n] where each p_i is a bit string
-						"Tag": "t"
-					}
-					.
-					.
-					.
-				         ]
+				{
+					packets = [p_0, ....., p_n] where each p_i is a bit string
+					"Tag": "t"
+				}
+				.
+				.
+				.
+			         ]
 
-			}
-			It is a single object consisting of an array of objects composed of (packet, tag) pairs.			
+		}
+		It is a single object consisting of an array of objects composed of (packet, tag) pairs.			
 
-			:param idx: (int) -> the index
+		:param idx: (int) -> the index
 
-			:return: (pckts, tag) -> returns the binary packet representation and its corresponding tag; tag=None on test dataset
-			"""
+		:return: (pckts, tag) -> returns the binary packet representation and its corresponding tag; tag=None on test dataset
+		"""
 
-			# read data
-			with open(self.fname, "r") as infile:
-				data = json.load(infile)
-			data = data[self.fname.split("/")[1].split(".")[0]]
-			datum = data[idx]
-			pckts = datum["packets"]
-			pckts = np.asarray([bin_to_list(p) for p in pckts])
-			# normalize pckts
-			if len(pckts) > PCKT_DIM:
-				pckts = pckts[0:MAX_PCKTS+1]
-			elif len(pckts) < PCKT_DIM:
-				pckts = np.pad(pckts, ((0, PCKT_DIM - len(pckts)), (0,0)), mode="constant", constant_values=(0,))
-			pckts = torch.from_numpy(pckts)
+		# read data
+		with open(self.fname, "r") as infile:
+			data = json.load(infile)
+		data = data[self.fname.split("/")[1].split(".")[0]]
+		datum = data[idx]
+		pckts = datum["packets"]
+		pckts = np.asarray([bin_to_list(p) for p in pckts])
+		# normalize pckts
+		if len(pckts) > PCKT_DIM:
+			pckts = pckts[0:MAX_PCKTS+1]
+		elif len(pckts) < PCKT_DIM:
+			pckts = np.pad(pckts, ((0, PCKT_DIM - len(pckts)), (0,0)), mode="constant", constant_values=(0,))
+		pckts = torch.from_numpy(pckts)
 
-			# represent tag as one-hot vectors
-			tags_to_ix = {"Normal": 0, "Infiltrating_Transfer": 1}
-			if "train" in self.fname:
-				ix = tags_to_ix[datum["Tag"]]
-				tag = [0 for i in range(len(tags_to_ix))]
-				tag[ix] = 1
-				tag = torch.tensor(tag)
-			else:
-				tag = None
+		# represent tag as one-hot vectors
+		tags_to_ix = {"Normal": 0, 
+					  "Infiltrating_Transfer": 1, 
+					  "Bruteforce": 2, 
+					  "Portscan": 3, 
+					  "Botnet": 4, 
+					  "DoS": 5,
+					  "DDoS": 6,
+					  "Web": 7,
+					  }
+		if "train" in self.fname:
+			ix = tags_to_ix[datum["Tag"]]
+			tag = [0 for i in range(len(tags_to_ix))]
+			tag[ix] = 1
+			tag = torch.tensor(tag)
+		else:
+			tag = None
 
-			return pckts, tag
+		return pckts, tag
 
 def _bin_to_list(bin):
 	"""
@@ -131,28 +153,6 @@ def _bin_to_list(bin):
 The following classes and functions are concered with model training and inference.
 """
 
-class NetworkFlow():
-	"""
-	A network flow.
-	"""
-	def __init__(self, pckts, src_ip, dest_ip, src_port, dest_port):
-		"""
-		Initializes a network flow.
-
-		:param pckts: (np.ndarray) -> array of packets where each packet is represented as a binary string (shape=(222,222))
-		:param src_ip: (str) -> the source ip
-		:param dest_ip: (str) -> the destination ip
-		:param src_port: (str) -> the source port
-		:param dest_port: (str) -> the destination port
-		"""
-
-		self.pckts = pckts
-		self.src_ip = src_ip
-		self.dest_ip = dest_ip
-		self.src_port = src_port
-		self.dest_port = dest_port
-
-
 def save_checkpoint(checkpoint, is_best, checkpoint_fpath, best_model_fpath):
     """
 	Saves checkpoint
@@ -166,14 +166,6 @@ def save_checkpoint(checkpoint, is_best, checkpoint_fpath, best_model_fpath):
     if is_best:
         shutil.copyfile(checkpoint_fpath, best_model_fpath)
 
-
-def load_checkpoint(checkpoint_fpath, model, optimizer):
-	
-	checkpoint = torch.load(checkpoint_fpath)
-	model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-	optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-	return model, optimizer, checkpoint["epoch"]
-
 def load_checkpoint(checkpoint_fpath, model, optimizer):
 	
 	checkpoint = torch.load(checkpoint_fpath)
@@ -182,11 +174,28 @@ def load_checkpoint(checkpoint_fpath, model, optimizer):
 	return model, optimizer, checkpoint["epoch"]
 
 class Model():
-	def __init__(self):
-		self.model = models.DenseNet(pretrained=False)
+	"""
+	The model takes the form of a pretrained DenseNet CNN. Given the marked differences between ImageNet
+	and our dataset, the parameters of the convolutional layers of the network will be modified along
+	with those of the linear layers (fine-tuning).
+	"""
+	def __init__(self, num_classes, pretrained=True):
+		"""
+		Initializes the model.
+
+		:param num_classes: (int) -> the number of classes
+		:param pretrained: (bool) -> whether or not to load pretrained model
+		"""
+
+		self.model = models.densenet161(pretrained=pretrained)
+		
+		# transform flows from (224,224) to (3,224,244) with conv layer
 		f_conv_layer = [nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
 		f_conv_layer.extend(list(self.model.features))
 		self.model.features = nn.Sequential(*f_conv_layer)
+		
+		# append custom linear layer
+		self.model.classifier = nn.Linear(1024, num_classes=num_classes)
 
 def train(model, optimizer, data_fname):
 	"""
@@ -204,7 +213,7 @@ def train(model, optimizer, data_fname):
 					"num_workers": NUM_WORKERS
 				   }
 	
-	train_data = Dataset(data_fname)
+	train_data = NetworkFlowDataset(data_fname)
 	train_loader = DataLoader(train_data, **params)
 
 	# train model
@@ -233,6 +242,90 @@ def train(model, optimizer, data_fname):
 	}
 	torch.save(model, "model/model.pt")
 
+def validate(model, data_fname):
+	"""
+	Validates model on validation data and computes accuracy.
+
+	:param model: (torch.nn) -> the neural network
+	:param data_fname: (str) -> the data filename
+	"""
+
+	model.eval()
+
+	# load data
+	train_params = {"batch_size": BATCH_SIZE,
+					"shuffle": SHUFFLE,
+					"num_workers": NUM_WORKERS
+				   }
+	val_data = NetworkFlowDataset(data_fname)
+	test_loader = DataLoader(test_data, **params)
+
+	ix_to_tag = {0: "Normal", 
+				  1: "Infiltrating_Transfer", 
+				  2: "Bruteforce", 
+				  3: "Portscan", 
+				  4: "Botnet", 
+				  5: "DoS",
+				  6: "DDoS",
+				  7: "Web",
+				  }
+	# perform inference
+	inferences = []
+	ground_truth = []
+	with torch.no_grad():
+		for flow_batch, tags in test_loader:
+			flow_batch = flow_batch.to(device), tags.to(device)
+			tag_scores = model(flow_batch).numpy()
+			inferences += [np.argmax(t_s) for t_s in tag_scores]
+			ground_truth += tags
+
+	accuracy = compute_accuracy(inferences, ground_truth)
+
+	# model will always be in train mode unless its running inference ops
+	model.train()
+
+	return accuracy
+
+def compute_accuracy(inferences, ground_truth):
+	"""
+	Compute accuracy of model predictions.
+
+	:param classifications: (list(int)) -> list of classifications
+	:param ground_truth: (list(int)) -> list of ground truth values
+
+	:return: (float) -> accuracy
+	"""
+
+	diff_map = [1 if inf == g_t else 0 for inf, g_t in zip(inferences, ground_truth)]
+	accuracy = sum(diff_map) / len(diff_map)
+
+	return accuracy
+
+"""
+The following classes and functions are concerned with real-time inference and rule generation.
+"""
+
+class NetworkFlow():
+	"""
+	A network flow.
+	"""
+	def __init__(self, pckts, src_ip, dest_ip, src_port, dest_port):
+		"""
+		Initializes a network flow.
+
+		:param pckts: (np.ndarray) -> array of packets where each packet is represented as a binary string (shape=(222,222))
+		:param src_ip: (str) -> the source ip
+		:param dest_ip: (str) -> the destination ip
+		:param src_port: (str) -> the source port
+		:param dest_port: (str) -> the destination port
+		"""
+
+		self.pckts = pckts
+		self.src_ip = src_ip
+		self.dest_ip = dest_ip
+		self.src_port = src_port
+		self.dest_port = dest_port
+
 def infer(model, data_fname):
 	"""
 	This function cannot be written without figuring out IPC
@@ -244,10 +337,18 @@ def infer(model, data_fname):
 # 					"shuffle": SHUFFLE,
 # 					"num_workers": NUM_WORKERS
 # 				   }
-# 	test_data = Dataset(data_fname)
+# 	test_data = NetworkFlowDataset(data_fname)
 # 	test_loader = DataLoader(test_data, **params)
 
-# 	ix_to_tags = {0: "Normal", 1: "Infiltrating_Transfer"}
+	# tags_to_ix = {0: "Normal", 
+	# 			  1: "Infiltrating_Transfer", 
+	# 			  2: "Bruteforce", 
+	# 			  3: "Portscan", 
+	# 			  4: "Botnet", 
+	# 			  5: "DoS",
+	# 			  6: "DDoS",
+	# 			  7: "Web",
+	# 			  }
 # 	# perform inference
 # 	inferences = []
 # 	with torch.no_grad():
@@ -274,8 +375,10 @@ Vocabulary: actions, target_types, targets
 - targets: the set of all numbers of some fixed length, it is the actual numerical identifier of the type of target 
   (e.g. if target_type=src IP, then target would be the actual address) : {0,9}^n
 
+ (maybe add protocol)
+
 A rule can be stored in a dictionary and, in general, looks like this: <action: a, target_type: t, target: T, sip (optional): sip>
-We might want to propose multiple rules at once so we can store these tuples in a list. We can call a list of rules a rule set.
+We might want to propose multiple rules at once so we can store these dictionaries in a list. We can call a list of rules a rule set.
 An rule set in its general form looks like this: [rule_0,...,rule_n] 
 
 Note: when proposing a rule that blocks the source port, also include the source IP in the rule
