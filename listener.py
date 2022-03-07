@@ -9,7 +9,7 @@ def main(argv):
     PORT = 491
     socket=setup_socket(HOST, PORT)
     #create a global array to keep track of the 
-    active_frame=np.empty([0,2])
+    active_frame=np.empty([0,4])
     active_frame=scapy.sniff(iface="eth0",prn=add_pkt(active_frame,socket))
     return
 def setup_socket(HOST, PORT):
@@ -49,21 +49,25 @@ def add_pkt(a_frame,socket):
         #need to insert packet at the end of each block of ip pairs
         ip_hash = hash(add_ips(src,dst))
         # create some kind of hash function to order the packets byi
-        a_frame=np.vstack((a_frame,[ip_hash,pkt_hex])) 
-        if(np.shape(a_frame)[0]==222):#len(a_frame)):
-            #Socket programming
-            #Find some way to sort th:w
-            #e dict
-            #print("Original Frame:\n{}".format(a_frame))
+        a_frame=np.vstack((a_frame,[ip_hash,pkt_hex,src,dst])) 
+        if(np.shape(a_frame)[0]==222):
+            # Sort the array by the hash of src+dst IP, then remove the hash
             sorted_arr=a_frame[np.argsort(a_frame[:,0])]
             sorted_arr=np.delete(sorted_arr,0,axis=1)
             sorted_bytes=sorted_arr.tobytes()
-            s.sendall(sorted_bytes)
+            print("size of int:{}".format(sys.getsizeof(sys.getsizeof(0).to_bytes(1,byteorder="little"))))
+            s.sendall(sys.getsizeof(0).to_bytes(1,byteorder="little"))
+            msg_len=sys.getsizeof(sorted_arr)
+            print("msg_len: {}\nlength: {}\ntype: {}".format(msg_len,sys.getsizeof(msg_len),type(msg_len)))
+            s.sendall(sys.getsizeof(sorted_arr).to_bytes(6,byteorder="little"))
+            #print(sorted_arr)
+            #Socket programming
             print("Sending Data to Server...")
+            s.sendall(sorted_bytes)
             data = s.recv(sys.getsizeof(int()))
             print("Received Code {} from Server\n".format(data))
             #print("Sorted Frame:\n{}".format(sorted_arr))
-            a_frame=np.empty([0,2])
+            a_frame=np.empty([0,4])
             #send the sorted_arr to the socket
          
     #need to include an interrupt function to close the port when the program is ended
