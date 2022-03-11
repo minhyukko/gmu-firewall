@@ -15,10 +15,9 @@ def main(argv):
             print("Connected by {}".format(addr))
             while True:
                 curr_time=time.perf_counter()
-                msg_type = conn.recv(33)
-                msg_len  = int.from_bytes(conn.recv(28),"little")
-                print("msg_len:{}".format(msg_len))
-                data     = conn.recv(msg_len)
+                data = conn.recv(85368)
+                print(type(data))
+                #data2 = np.frombuffer(data,dtype=np.str_)
                 recv_time = time.perf_counter()
                 #print("Data:{}".format(data))
                 if not data:
