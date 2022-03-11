@@ -6,7 +6,7 @@ import socket
 def main(argv):
     # define a socket before we start listening
     HOST = '127.0.0.1'
-    PORT = 492
+    PORT = 491
     socket=setup_socket(HOST, PORT)
     #create a global array to keep track of the 
     active_frame=np.empty([0,2])

@@ -5,7 +5,7 @@ import time
 
 def main(argv):
     HOST = "127.0.0.1"
-    PORT = 492
+    PORT = 491
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.bind((HOST,PORT))
