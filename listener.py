@@ -14,7 +14,7 @@ def main(argv):
     return
 def setup_socket(HOST, PORT):
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect((HOST,PORT))
     except socket.error as err:
         print("Socket creation has failed with error %s"%(err))    

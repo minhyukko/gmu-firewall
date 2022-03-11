@@ -7,28 +7,28 @@ def main(argv):
     HOST = "127.0.0.1"
     PORT = 492
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.bind((HOST,PORT))
-        s.listen()
-        conn,addr= s.accept()
-        with conn:
+        #s.listen()
+        #conn,addr= s.accept()
+        #with conn:
+            #print("Connected by {}".format(addr))
+        while True:
+            curr_time=time.perf_counter()
+            data,addr = s.recvfrom(7137)
             print("Connected by {}".format(addr))
-            while True:
-                curr_time=time.perf_counter()
-                data = conn.recv(7137)
-                print(type(data))
-                data2 = np.frombuffer(data,dtype='S32', count=-1)
-                recv_time = time.perf_counter()
-                print("Data:{}".format(data2))
-                if not data:
-                    print("Data Not Received\nClosing...\n")
-                    conn.sendall(bytes(2))
-                    break
+            data2 = np.frombuffer(data,dtype='S32', count=-1)
+            recv_time = time.perf_counter()
+            print("Data:{}".format(data2))
+            if not data:
+                print("Data Not Received\nClosing...\n")
+                conn.sendall(bytes(2))
+                break
 
                 
-                print("Received Data:{} s".format(recv_time-curr_time))
+            print("Received Data:{} s".format(recv_time-curr_time))
 
-                conn.sendall(bytes(1))
+            #conn.sendall(bytes(1))
     return
 
 
