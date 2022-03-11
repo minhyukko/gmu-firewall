@@ -5,7 +5,7 @@ import time
 
 def main(argv):
     HOST = "127.0.0.1"
-    PORT = 491
+    PORT = 492
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST,PORT))
@@ -15,11 +15,11 @@ def main(argv):
             print("Connected by {}".format(addr))
             while True:
                 curr_time=time.perf_counter()
-                data = conn.recv(85368)
+                data = conn.recv(7137)
                 print(type(data))
-                #data2 = np.frombuffer(data,dtype=np.str_)
+                data2 = np.frombuffer(data,dtype='S32', count=-1)
                 recv_time = time.perf_counter()
-                #print("Data:{}".format(data))
+                print("Data:{}".format(data2))
                 if not data:
                     print("Data Not Received\nClosing...\n")
                     conn.sendall(bytes(2))

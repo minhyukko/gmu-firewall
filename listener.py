@@ -6,7 +6,7 @@ import socket
 def main(argv):
     # define a socket before we start listening
     HOST = '127.0.0.1'
-    PORT = 491
+    PORT = 492
     socket=setup_socket(HOST, PORT)
     #create a global array to keep track of the 
     active_frame=np.empty([0,2])
@@ -57,7 +57,7 @@ def add_pkt(a_frame,socket):
             sorted_arr=np.delete(sorted_arr,0,axis=1)
             print(sorted_arr.dtype)
             sorted_bytes=sorted_arr.tobytes()
-            print(sys.getsizeof(sorted_arr))
+            print(sys.getsizeof(sorted_bytes))
             #print(type(sorted_arr))
             #print("size of int:{}".format(sys.getsizeof(sys.getsizeof(0).to_bytes(1,byteorder="little")))
             #msg_len=sys.getsizeof(sorted_arr)
@@ -68,11 +68,10 @@ def add_pkt(a_frame,socket):
             #Socket programming
             print("Sending Data to Server...")
             s.sendall(sorted_bytes)
-            sys.exit(1)
             data = s.recv(sys.getsizeof(int()))
             print("Received Code {} from Server\n".format(data))
             #print("Sorted Frame:\n{}".format(sorted_arr))
-            a_frame=np.empty([0,4])
+            a_frame=np.empty([0,2])
             #send the sorted_arr to the socket
          
     #need to include an interrupt function to close the port when the program is ended
