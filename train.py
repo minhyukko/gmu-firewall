@@ -22,6 +22,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import json
 from collections import defaultdict
+import shutil
 import os
 
 """
@@ -44,10 +45,10 @@ print(f"Using {device} device")
 Set model hyperparameters
 """
 torch.manual_seed(42)
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 SHUFFLE = True
-NUM_WORKERS = 2
-MAX_EPOCHS = 100
+NUM_WORKERS = 4
+MAX_EPOCHS = 10
 PATIENCE = 7
 
 
@@ -68,7 +69,6 @@ def preprocess_data(fname):
 			.
 			.
 		]
-
 		"test": [
 			{
 				"packets": [p_0, ....., p_n] where each p_i is a bit string
@@ -78,7 +78,6 @@ def preprocess_data(fname):
 			.
 			.
 		]
-
 		"dev": [
 			{
 				"packets": [p_0, ....., p_n] where each p_i is a bit string
@@ -92,7 +91,6 @@ def preprocess_data(fname):
 	It is a dictionary where each key points to a list of {"packets": [packets], Tag:[tag]} dictionaries.
 	Preprocesses the data so it is in order; currently only modifies packet arrays to be of shape (PCKT_DIM, PCKT_DIM).
 	Writes the output to data/data_preproc.json.
-
 	:return: None
 	"""
 
@@ -121,8 +119,6 @@ def preprocess_data(fname):
 		else:
 			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
 
-
-		
 		# apply changes
 		datum["packets"] = pckts
 	
@@ -349,8 +345,6 @@ def get_meta(mode):
 
 	return length, size
 
-
-
 class NetworkFlowDataset(Dataset):
 	"""
 
@@ -435,23 +429,25 @@ class NetworkFlowDataset(Dataset):
 		with open(fpath) as infile:
 			data = json.load(infile)[self.mode]
 
+		# get packets 
 		idx = idx % self.size
 		datum = data[idx]
 		pckts = datum["packets"]
-		pckts = torch.tensor([bin_to_list(p) for p in pckts])
+		# transform packet representation from list<str> -> binary tensor (3, PCKT_DIM, PCKT_DIM)
+		pckts = np.array([bin_to_list(p) for p in pckts]) 
+		filler = np.zeros((PCKT_DIM, PCKT_DIM))
+		pckts = np.stack([pckts, filler, filler])
+		pckts = torch.tensor(pckts, dtype=torch.float32)
+		# normalize
+		normalize_func = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+		pckts = normalize_func(pckts)
 
-
+		# get tag
 		tag = None
 		if self.mode == "train" or self.mode == "dev":
-			ix = self.tags_to_ix[datum["Tag"]]
-			tag = np.zeros(len(self.tags_to_ix))
-			tag[ix] = 1
-			tag = torch.tensor(tag)
+			tag = self.tags_to_ix[datum["Tag"]]
 
-		print(type(pckts))
-		print(pckts.shape)
-
-		return pckts, tag
+		return pckts, tag	
 
 def bin_to_list(bin):
 	"""
@@ -505,40 +501,40 @@ class AnalyticEngine():
 		:param pretrained: (bool) -> whether or not to load pretrained model
 		"""
 
-		self.model = models.densenet161(pretrained=pretrained)
-		
-		# transform flows from (224,224) to (3,224,244) with conv layer
-		f_conv_layer = [nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
-		f_conv_layer.extend(list(self.model.features))
-		self.model.features = nn.Sequential(*f_conv_layer)
-		
-		# append custom linear layer
-		self.model.classifier = nn.Linear(in_features=1024, out_features=num_classes)
+		self.model = models.densenet121(pretrained=pretrained)
+		self.model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.Softmax(dim=1))
 
 	def get_model(self):
+		"""
+		Returns the model itself.
+
+		:params: None
+
+		:return: (torch.nn) -> the neural network
+		"""
+
 		return self.model
 
-def train(model, optimizer, train_fname, val_fname, ckpt_fname):
+def train(model, optimizer):
 	"""
 	Trains the model and saves it.
 
 	:param model: (torch.nn) -> the model
 	:param optimizer: (torch.optim) -> the optimizer
-	:param train_fname: (str) -> the training data filename
-	:param val_fname: (str) -> the validation data filename
-	:param ckpt_fname: (str) -> the ckpt filename
 
 	:return: (torch.nn) -> the trained model 
 	"""
+
+	print("training model...")
 
 	model.train()
 	loss_function = nn.NLLLoss()
 
 	# load data
-	train_params = {"batch_size": BATCH_SIZE,
-					"shuffle": SHUFFLE,
-					"num_workers": NUM_WORKERS
-				   }
+	params = {"batch_size": BATCH_SIZE,
+			  "shuffle": SHUFFLE,
+			  "num_workers": NUM_WORKERS
+			  }
 	
 	train_data = NetworkFlowDataset(mode="train")
 	train_loader = DataLoader(train_data, **params)
@@ -550,20 +546,24 @@ def train(model, optimizer, train_fname, val_fname, ckpt_fname):
 	is_best = True
 	train = True
 	epoch = 0
-	while train == True:
-		print(f"Starting epoch {epoch}...")
-		for flow_batch, tags in train_loader:
+	batch_i = 0
+	while train == True and epoch < MAX_EPOCHS:
+		print(f"starting epoch {epoch}...")
+		for flows, tags in train_loader:
+			print(f"processing batch {batch_i}...")
 			# clean gradient memory, setup hardware
 			model.zero_grad()
-			flow_batch, tags = flow_batch.to(device), tags.to(device)
+			flows, tags = flows.to(device), tags.to(device)
 			
 			# forward prop
-			tag_scores = model(flow_batch)
+			tag_scores = model(flows)
 			
 			# backprop
 			loss = loss_function(tag_scores, tags)
 			loss.backward()
 			optimizer.step()
+
+			batch_i += 1
 
 		# store model state
 		ckpt = {
@@ -572,7 +572,7 @@ def train(model, optimizer, train_fname, val_fname, ckpt_fname):
 			"optimizer_state_dict": optimizer.state_dict()
 		}
 		# validate
-		accuracy = validate(model=model, data_fname=val_fname)
+		accuracy = validate(model=model)
 		print("Accuracy on validation set: " + str(accuracy))
 		# save checkpoint
 		save_ckpt(ckpt, is_best)
@@ -617,21 +617,11 @@ def validate(model):
 	inferences = []
 	ground_truth = []
 	with torch.no_grad():
-		for flow_batch, tags in dev_loader:
-			flow_batch = flow_batch.to(device), tags.to(device)
-			tag_scores = model(flow_batch).numpy()
-			# inferences += [np.argmax(t_s) for t_s in tag_scores]
-			print("Tag scores info:")
-			print(tag_scores)
-			print(type(tag_scores))
-			print(type(tag_scores[0]))
-			print()
-			print("Tags info:")
-			print(tags)
-			print(type(tags))
-			print(type(tags[0]))
-			quit()
-			
+		for flows, tags in dev_loader:
+			flows, tags = flows.to(device), tags.to(device)
+			tag_scores = model(flows).numpy()
+			inferences += [np.argmax(t_s) for t_s in tag_scores]
+			ground_truth += [np.argmax(t) for t in tags]
 
 	accuracy = compute_accuracy(inferences, ground_truth)
 
@@ -661,8 +651,9 @@ def main():
 	Drives the program.
 	"""
 
-	ae = AnalyticEngine(num_classes=2, pretrained=True).get_model()
-	validate(ae)
+	ae = AnalyticEngine(num_classes=2).get_model()
+	opt = optim.Adam(ae.parameters(), lr=0.001)
+	train(ae, opt)
 
 if __name__ == "__main__":
 	main()
