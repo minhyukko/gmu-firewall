@@ -15,6 +15,7 @@ TODO:
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from torchvision import transforms
 import torch.optim as optim
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -45,7 +46,7 @@ Set model hyperparameters
 torch.manual_seed(42)
 BATCH_SIZE = 64
 SHUFFLE = True
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 MAX_EPOCHS = 100
 PATIENCE = 7
 
@@ -107,6 +108,8 @@ def preprocess_data(fname):
 		pckts = datum["packets"]
 		
 		# truncate or bottom-pad packet array
+		
+		
 		if len(pckts) > PCKT_DIM:
 			pckts = pckts[0:PCKT_DIM]
 		else:
@@ -117,6 +120,8 @@ def preprocess_data(fname):
 			pckts = [p[0:PCKT_DIM] for p in pckts]
 		else:
 			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
+
+
 		
 		# apply changes
 		datum["packets"] = pckts
@@ -323,36 +328,60 @@ def split_data(fname, train_size, test_size, dev_size):
 	# with open(os.path.join(DEV_DIR, "dev_meta.json"), "w") as outfile:
 	# 	json.dump(dev_meta, outfile, indent=4)
 
+def get_meta(mode):
+
+	meta_fpath = None
+	if mode == "train":
+		meta_fpath = os.path.join(TRAIN_DIR, "train_meta.json")
+	elif mode == "test":
+		meta_fpath = os.path.join(TEST_DIR, "test_meta.json")
+	elif mode == "dev":
+		meta_fpath = os.path.join(DEV_DIR, "dev_meta.json")
+	else:
+		print("Error: unsupported model")
+		quit()
+
+	with open(meta_fpath) as infile:
+		data = json.load(infile)
+
+	length = data["length"]
+	size = data["size"]
+
+	return length, size
+
+
+
 class NetworkFlowDataset(Dataset):
 	"""
 
 	"""
 
-	def __init__(mode, length, size):
+	def __init__(self, mode):
 		"""
 		Initializes the Dataset.
 
 		:param mode: (str) -> the data mode {"train", "test", "dev"}
-		:param length: (int) -> the total number of elements in the dataset
-		:param size: (int) -> the maximum number of elements stored in each file after partitioning
 		"""
 
 		self.mode = mode
-		self.length = length
-		self.size = size
+		self.length, self.size = get_meta(mode)
 		# represent tag as one-hot vectors
+		# self.tags_to_ix = {"Normal": 0,
+		# 			  	   "Infiltrating_Transfer": 1, 
+		# 			       "Bruteforce_SSH": 2, 
+		# 			       "DDoS": 3,
+		# 			       "HTTP_DDoS": 4
+		# 			       }
 		self.tags_to_ix = {"Normal": 0,
-					  	   "Infiltrating_Transfer": 1, 
-					       "Bruteforce_SSH": 2, 
-					       "DDoS": 3,
-					       "HTTP_DDoS": 4
-					       }
+						   "Infiltrating_Transfer": 1}			   
+		# self.ix_to_tags = {0: "Normal",
+		# 			  	     1: "Infiltrating_Transfer", 
+		# 			         2: "Bruteforce_SSH", 
+		# 			         3: "DDoS",
+		# 			         4: "HTTP_DDoS"
+		# 			       }
 		self.ix_to_tags = {0: "Normal",
-					  	   1: "Infiltrating_Transfer", 
-					       2: "Bruteforce_SSH", 
-					       3: "DDoS",
-					       4: "HTTP_DDoS"
-					       }
+						   1: "Infiltrating_Transfer"}
 
 	def __len__(self):
 		"""
@@ -393,69 +422,65 @@ class NetworkFlowDataset(Dataset):
 
 		# read data
 		fpath = None
-		if mode == "train":
-			fname = "train_" + str(int(idx/size)) + ".json"
+		if self.mode == "train":
+			fname = "train_" + str(int(idx/self.size)) + ".json"
 			fpath = os.path.join(TRAIN_DIR, fname)
-		elif mode == "test"
-			fname = "train_" + str(int(idx/size)) + ".json"
+		elif self.mode == "test":
+			fname = "train_" + str(int(idx/self.size)) + ".json"
 			fpath = os.path.join(TEST_DIR, fname)
-		else:
-			fname = "dev_" + str(int(idx/size)) + ".json"
-			fpath = os.path.join(DEV_DIR, fname)			
+		elif self.mode == "dev":
+			fname = "dev_" + str(int(idx/self.size)) + ".json"
+			fpath = os.path.join(DEV_DIR, fname)		
 
 		with open(fpath) as infile:
-			data = json.load(infile)
+			data = json.load(infile)[self.mode]
 
-		idx = idx % size
-		datum = data[idx]
-		pckts = torch.tensor([bin_to_list(p) for p in pckts])
-
-		with open("data/data.json", "r") as infile:
-			data = json.load(infile)
-
-		data = data[self.fpath.split("/")[1].split(".")[0]] # data["train"] or data["test"]
+		idx = idx % self.size
 		datum = data[idx]
 		pckts = datum["packets"]
+		pckts = torch.tensor([bin_to_list(p) for p in pckts])
+
 
 		tag = None
-		if mode == "train" or mode == "val":
-			ix = tags_to_ix[datum["Tag"]]
-			tag = [0 for i in range(len(tags_to_ix))]
+		if self.mode == "train" or self.mode == "dev":
+			ix = self.tags_to_ix[datum["Tag"]]
+			tag = np.zeros(len(self.tags_to_ix))
 			tag[ix] = 1
 			tag = torch.tensor(tag)
 
+		print(type(pckts))
+		print(pckts.shape)
+
 		return pckts, tag
 
-def _bin_to_list(bin):
+def bin_to_list(bin):
 	"""
 	Given a binary sequence stored a string, "b_0b_1b_2...b_n" returns a list
-	where each element is a bit b_i. The resulting list is projected from [0,1]
-	range to [0,255]. 
+	where each element is a bit b_i.
 
 	:param bin: (str) -> the binary sequence
 
 	:return: (list) -> a list of ints
 	"""
 
-	return [int(b)*255 for b in bin]
-
+	return [int(b) for b in bin]
 
 """
 The following classes and functions are concered with model training and inference.
 """
 
 def save_ckpt(ckpt, is_best):
-    """
+	"""
 	Saves ckpt
 	:param ckpt: (dict) -> a dictionary storing the state of a model
 	:param is_best: (bool) -> enables special storage of the best model
-    """
+	"""
 
-    ckpt_fpath = os.path.join(MODEL_DIR, "ckpt.pt")
-    torch.save(ckpt, ckpt_fpath)
-    if is_best:
-    	best_fpath = os.path.join(MODEL_DIR, "model.pt")
-        shutil.copyfile(ckpt_fpath, best_fpath)
+	ckpt_fpath = os.path.join(MODEL_DIR, "ckpt.pt")
+	torch.save(ckpt, ckpt_fpath)
+	if is_best:
+		best_fpath = os.path.join(MODEL_DIR, "model.pt")
+		shutil.copyfile(ckpt_fpath, best_fpath)
 
 def load_ckpt(ckpt_fname, model, optimizer):
 	
@@ -465,7 +490,7 @@ def load_ckpt(ckpt_fname, model, optimizer):
 	optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 	return model, optimizer, ckpt["epoch"]
 
-class Model():
+class AnalyticEngine():
 	"""
 	The model takes the form of a pretrained DenseNet CNN. Given the marked differences between ImageNet
 	and our dataset, the parameters of the convolutional layers of the network will be modified along
@@ -488,7 +513,10 @@ class Model():
 		self.model.features = nn.Sequential(*f_conv_layer)
 		
 		# append custom linear layer
-		self.model.classifier = nn.Linear(1024, num_classes=num_classes)
+		self.model.classifier = nn.Linear(in_features=1024, out_features=num_classes)
+
+	def get_model(self):
+		return self.model
 
 def train(model, optimizer, train_fname, val_fname, ckpt_fname):
 	"""
@@ -512,7 +540,7 @@ def train(model, optimizer, train_fname, val_fname, ckpt_fname):
 					"num_workers": NUM_WORKERS
 				   }
 	
-	train_data = NetworkFlowDataset(train_fname)
+	train_data = NetworkFlowDataset(mode="train")
 	train_loader = DataLoader(train_data, **params)
 
 	# train model
@@ -566,39 +594,44 @@ def train(model, optimizer, train_fname, val_fname, ckpt_fname):
 
 	return model
 
-def validate(model, data_fname):
+def validate(model):
 	"""
-	Validates model on validation data and computes accuracy.
+	Validates model on development set and computes accuracy.
 
 	:param model: (torch.nn) -> the neural network
-	:param data_fname: (str) -> the data filename
 	"""
+
+	print("validating model...")
 
 	model.eval()
 
 	# load data
-	train_params = {"batch_size": BATCH_SIZE,
+	params = {"batch_size": BATCH_SIZE,
 					"shuffle": SHUFFLE,
 					"num_workers": NUM_WORKERS
 				   }
-	val_data = NetworkFlowDataset(data_fname)
-	test_loader = DataLoader(test_data, **params)
+	dev_data = NetworkFlowDataset(mode="dev")
+	dev_loader = DataLoader(dev_data, **params)
 
-	ix_to_tag = {0: "Normal", 
-				  1: "Infiltrating_Transfer", 
-				  2: "Bruteforce_SSH", 
-				  3: "DDoS", 
-				  4: "HTTP_DDos"
-				  }
 	# perform inference
 	inferences = []
 	ground_truth = []
 	with torch.no_grad():
-		for flow_batch, tags in test_loader:
+		for flow_batch, tags in dev_loader:
 			flow_batch = flow_batch.to(device), tags.to(device)
 			tag_scores = model(flow_batch).numpy()
-			inferences += [np.argmax(t_s) for t_s in tag_scores]
-			ground_truth += tags
+			# inferences += [np.argmax(t_s) for t_s in tag_scores]
+			print("Tag scores info:")
+			print(tag_scores)
+			print(type(tag_scores))
+			print(type(tag_scores[0]))
+			print()
+			print("Tags info:")
+			print(tags)
+			print(type(tags))
+			print(type(tags[0]))
+			quit()
+			
 
 	accuracy = compute_accuracy(inferences, ground_truth)
 
@@ -623,7 +656,16 @@ def compute_accuracy(inferences, ground_truth):
 	return accuracy
 
 
+def main():
+	"""
+	Drives the program.
+	"""
 
+	ae = AnalyticEngine(num_classes=2, pretrained=True).get_model()
+	validate(ae)
+
+if __name__ == "__main__":
+	main()
 
 
 
