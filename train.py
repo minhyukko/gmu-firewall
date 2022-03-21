@@ -1,17 +1,12 @@
 """
-TODO:
-- get src/dest IP
-- implement IPC (run will be communicating directly with socket)
-- add stopping condition based on validation
-- decide whether or not to use transfer learning
-- use checksum
-- perform val split
-- DUMMY AE
-- decide attack |-> response dictionary
-- set firewall to default state
-(save firewall configuration)
+Trains the neural model. 
 """
 
+import utils
+import numpy as np
+import json
+import shutil
+import os
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -19,11 +14,6 @@ from torchvision import transforms
 import torch.optim as optim
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-import numpy as np
-import json
-from collections import defaultdict
-import shutil
-import os
 
 """
 Constants
@@ -36,13 +26,12 @@ MODEL_DIR = "model/"
 PCKT_DIM = 224
 
 """
-Set model device
+Model device.
 """
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
 
 """
-Set model hyperparameters
+Model hyperparameters.
 """
 torch.manual_seed(42)
 BATCH_SIZE = 32
@@ -52,302 +41,9 @@ MAX_EPOCHS = 10
 PATIENCE = 7
 
 
-"""
-The following classes and functions are concerned with data ingestion.
-"""
-
-def preprocess_data(fname):
-	"""
-	The passed file is assumed to be in JSON format and to have this structure:
-	{
-		"train": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-		"test": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-		"dev": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-	}
-	It is a dictionary where each key points to a list of {"packets": [packets], Tag:[tag]} dictionaries.
-	Preprocesses the data so it is in order; currently only modifies packet arrays to be of shape (PCKT_DIM, PCKT_DIM).
-	Writes the output to data/data_preproc.json.
-	:return: None
-	"""
-
-	print("preprocessing data...")
-
-	fpath = os.path.join(DATA_DIR, fname) # data/[fname].json
-	with open(fpath) as infile:
-		data = json.load(infile)
-	
-	# normalize train packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
-	train_data = data["train"]
-	for datum in train_data:
-		pckts = datum["packets"]
-		
-		# truncate or bottom-pad packet array
-		
-		
-		if len(pckts) > PCKT_DIM:
-			pckts = pckts[0:PCKT_DIM]
-		else:
-			pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
-		
-		# truncate or right-pad each packet
-		if len(pckts[0]) > PCKT_DIM:
-			pckts = [p[0:PCKT_DIM] for p in pckts]
-		else:
-			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
-
-		# apply changes
-		datum["packets"] = pckts
-	
-	data["train"] = train_data
-
-	# normalize test packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
-	test_data = data["test"]
-	for datum in test_data:
-		pckts = datum["packets"]
-		
-		# truncate or bottom-pad packet array
-		if len(pckts) > PCKT_DIM:
-			pckts = pckts[0:PCKT_DIM]
-		else:
-			pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
-		
-		# truncate or right-pad each packet
-		if len(pckts[0]) > PCKT_DIM:
-			pckts = [p[0:PCKT_DIM] for p in pckts]
-		else:
-			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
-		
-		# apply changes
-		datum["packets"] = pckts
-	
-	data["test"] = test_data
-
-	preproc_fpath = os.path.join(DATA_DIR, "data_preproc.json")
-	with open(preproc_fpath, "w") as outfile:
-		json.dump(data, outfile, indent=4)
-
-	# normalize test packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
-	# dev_data = data["dev"]
-	# for datum in dev_data:
-	# 	pckts = datum["packets"]
-		
-	# 	# truncate or bottom-pad packet array
-	# 	if len(pckts) > PCKT_DIM:
-	# 		pckts = pckts[0:PCKT_DIM]
-	# 	else:
-	# 		pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
-		
-	# 	# truncate or right-pad each packet
-	# 	if len(pckts[0]) > PCKT_DIM:
-	# 		pckts = [p[0:PCKT_DIM] for p in pckts]
-	# 	else:
-	# 		pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
-		
-	# 	# apply changes
-	# 	datum["packets"] = pckts
-	
-	# data["dev"] = dev_data
-
-
-def check_preprocess(fname):
-	"""
-	Checks if the data file has been properly preprocessed.
-
-	:param fname: (str) -> the filename of the preprocessed dataset
-
-	:return: (bool) -> indicates whether or not preprocessing went well
-	"""
-	
-	print("verifying data is preprocessed...")
-	
-	preprocessed = True
-
-	preproc_fpath = os.path.join(DATA_DIR, fname)
-	with open(preproc_fpath) as infile:
-		data = json.load(infile)
-
-	train_data = data["train"]
-	for i, datum in enumerate(train_data):
-		pckts = datum["packets"]
-		num_packets = len(pckts)
-		size_packets = len(pckts[0])
-		if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
-			preprocessed = False
-			print("[Train] Flow " + str(i) + " is not normalized")
-			print("shape=" + str((num_packets, size_packets)))
-
-	test_data = data["test"]
-	for i, datum in enumerate(test_data):
-		pckts = datum["packets"]
-		num_packets = len(pckts)
-		size_packets = len(pckts[0])
-		if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
-			preprocessed = False
-			print("[Test] Flow " + str(i) + " is not normalized")
-			print("shape=" + str((num_packets, size_packets)))
-
-	# dev_data = data["dev"]
-	# for i, datum in enumerate(dev_data):
-	# 	pckts = datum["packets"]
-	# 	num_packets = len(pckts)
-	# 	size_packets = len(pckts[0])
-	# 	if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
-	# 		preprocessed = False
-	# 		print("[Test] Flow " + str(i) + " is not normalized")
-	#		print("shape=" + str((num_packets, size_packets)))
-
-	return preprocessed
-
-def split_data(fname, train_size, test_size, dev_size):
-	"""
-	The passed file is assumed to be in JSON format and to have this structure:
-	{
-		"train": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-
-		"test": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-
-		"dev": [
-			{
-				"packets": [p_0, ....., p_n] where each p_i is a bit string
-				"Tag": t
-			}
-			.
-			.
-			.
-		]
-	}
-	It is a dictionary where each key points to a list of {"packets": [packets], Tag:[tag]} dictionaries.
-	Splits the data file into a set of training and testing files, each containing a specified number of instances.
-	Writes these files along with a corresponding JSON meta-file with the following structure:
-	{
-    	"length": (int),
-    	"size": (int)
-	}
-	where "length" records the total number of elements in the set and "size" records the max number of instances in each file
-
-	:param fname: (str) -> the filename of the data
-						   the filename must be either: train.json, test.json, or dev.json
-	:param train_size: (int) -> the number of instances in each train file
-	:param test_size: (int) -> the number of instances in each test file
-
-	:return: None
-	"""
-
-	print("splitting data...")
-
-	fpath = os.path.join(DATA_DIR, fname) # data/[fname].json
-	with open(fpath) as infile:
-		data = json.load(infile)
-
-	# split train portion
-	train_data = data["train"]
-	train_length = 0
-	for i in range(0,len(train_data), train_size):
-		segment = {}
-		segment["train"] = train_data[i:min(i+train_size, len(train_data))]
-		mod_fname = "train_" + str(int(i/train_size)) + ".json"
-		segment_fpath = os.path.join(TRAIN_DIR, mod_fname) # data/train/train_i.json
-		with open(segment_fpath, "w") as outfile:
-			json.dump(segment, outfile, indent=4)
-	
-	# write train meta
-	train_meta = {"length": len(train_data), "size": train_size}
-	with open(os.path.join(TRAIN_DIR, "train_meta.json"), "w") as outfile:
-		json.dump(train_meta, outfile, indent=4)
-
-	# split test portion
-	test_data = data["test"]
-	for i in range(0,len(test_data),test_size):
-		segment = {}
-		segment["test"] = test_data[i:min(i+test_size, len(test_data))]
-		mod_fname = "test_" + str(int(i/test_size)) + ".json"
-		segment_fpath = os.path.join(TEST_DIR, mod_fname) # data/test/test_i.json
-		with open(segment_fpath, "w") as outfile:
-			json.dump(segment, outfile, indent=4)
-
-	test_meta = {"length": len(test_data), "size": test_size}
-	with open(os.path.join(TEST_DIR, "test_meta.json"), "w") as outfile:
-		json.dump(test_meta, outfile, indent=4)
-
-
-	# split dev portion
-	# dev_data = data["dev"]
-	# for i in range(0,len(dev_data),dev_size):
-	# 	segment = {}
-	# 	segment["dev"] = test_data[i:min(i+dev_size, len(dev_data))]
-	# 	mod_fname = "dev_" + str(int(i/dev_size)) + ".json"
-	# 	segment_fpath = os.path.join(DEV_DIR, mod_fname) # data/dev/dev_i.json
-	# 	with open(segment_fpath, "w") as outfile:
-	# 		json.dump(segment, outfile, indent=4)
-
-	# dev_meta = {"length": len(dev_data), "size": dev_size}
-	# with open(os.path.join(DEV_DIR, "dev_meta.json"), "w") as outfile:
-	# 	json.dump(dev_meta, outfile, indent=4)
-
-def get_meta(mode):
-
-	meta_fpath = None
-	if mode == "train":
-		meta_fpath = os.path.join(TRAIN_DIR, "train_meta.json")
-	elif mode == "test":
-		meta_fpath = os.path.join(TEST_DIR, "test_meta.json")
-	elif mode == "dev":
-		meta_fpath = os.path.join(DEV_DIR, "dev_meta.json")
-	else:
-		print("Error: unsupported model")
-		quit()
-
-	with open(meta_fpath) as infile:
-		data = json.load(infile)
-
-	length = data["length"]
-	size = data["size"]
-
-	return length, size
-
 class NetworkFlowDataset(Dataset):
 	"""
-
+	Manages dataset-model delivery during training, validation, and testing.
 	"""
 
 	def __init__(self, mode):
@@ -358,7 +54,7 @@ class NetworkFlowDataset(Dataset):
 		"""
 
 		self.mode = mode
-		self.length, self.size = get_meta(mode)
+		self.length, self.size = utils.get_meta(mode)
 		# represent tag as one-hot vectors
 		# self.tags_to_ix = {"Normal": 0,
 		# 			  	   "Infiltrating_Transfer": 1, 
@@ -434,7 +130,7 @@ class NetworkFlowDataset(Dataset):
 		datum = data[idx]
 		pckts = datum["packets"]
 		# transform packet representation from list<str> -> binary tensor (3, PCKT_DIM, PCKT_DIM)
-		pckts = np.array([bin_to_list(p) for p in pckts]) 
+		pckts = np.array([utils.bin_to_list(p) for p in pckts]) 
 		filler = np.zeros((PCKT_DIM, PCKT_DIM))
 		pckts = np.stack([pckts, filler, filler])
 		pckts = torch.tensor(pckts, dtype=torch.float32)
@@ -447,94 +143,24 @@ class NetworkFlowDataset(Dataset):
 		if self.mode == "train" or self.mode == "dev":
 			tag = self.tags_to_ix[datum["Tag"]]
 
-		return pckts, tag	
+		return pckts, tag
 
-def bin_to_list(bin):
+def train(model, optimizer, loss):
 	"""
-	Given a binary sequence stored a string, "b_0b_1b_2...b_n" returns a list
-	where each element is a bit b_i.
+	Trains the model, performs validation at the end of every epoch, saves best model.
 
-	:param bin: (str) -> the binary sequence
-
-	:return: (list) -> a list of ints
-	"""
-
-	return [int(b) for b in bin]
-
-"""
-The following classes and functions are concered with model training and inference.
-"""
-
-def save_ckpt(ckpt, is_best):
-	"""
-	Saves ckpt
-	:param ckpt: (dict) -> a dictionary storing the state of a model
-	:param is_best: (bool) -> enables special storage of the best model
-	"""
-
-	ckpt_fpath = os.path.join(MODEL_DIR, "ckpt.pt")
-	torch.save(ckpt, ckpt_fpath)
-	if is_best:
-		best_fpath = os.path.join(MODEL_DIR, "model.pt")
-		shutil.copyfile(ckpt_fpath, best_fpath)
-
-def load_ckpt(ckpt_fname, model, optimizer):
-	
-	ckpt_fpath = os.path.join(MODEL_DIR, ckpt_fname)
-	ckpt = torch.load(ckpt_fpath)
-	model.load_state_dict(ckpt["model_state_dict"], strict=False)
-	optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-	return model, optimizer, ckpt["epoch"]
-
-class AnalyticEngine():
-	"""
-	The model takes the form of a pretrained DenseNet CNN. Given the marked differences between ImageNet
-	and our dataset, the parameters of the convolutional layers of the network will be modified along
-	with those of the linear layers (fine-tuning).
-	"""
-
-	def __init__(self, num_classes, pretrained=True):
-		"""
-		Initializes the model.
-
-		:param num_classes: (int) -> the number of classes
-		:param pretrained: (bool) -> whether or not to load pretrained model
-		"""
-
-		self.model = models.densenet121(pretrained=pretrained)
-		self.model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.Softmax(dim=1))
-
-	def get_model(self):
-		"""
-		Returns the model itself.
-
-		:params: None
-
-		:return: (torch.nn) -> the neural network
-		"""
-
-		return self.model
-
-def train(model, optimizer):
-	"""
-	Trains the model and saves it.
-
-	:param model: (torch.nn) -> the model
-	:param optimizer: (torch.optim) -> the optimizer
-
-	:return: (torch.nn) -> the trained model 
+	:return: None
 	"""
 
 	print("training model...")
 
 	model.train()
-	loss_function = nn.NLLLoss()
 
 	# load data
 	params = {"batch_size": BATCH_SIZE,
-			  "shuffle": SHUFFLE,
-			  "num_workers": NUM_WORKERS
-			  }
+			  		"shuffle": SHUFFLE,
+			  		"num_workers": NUM_WORKERS
+			 }
 	
 	train_data = NetworkFlowDataset(mode="train")
 	train_loader = DataLoader(train_data, **params)
@@ -559,7 +185,7 @@ def train(model, optimizer):
 			tag_scores = model(flows)
 			
 			# backprop
-			loss = loss_function(tag_scores, tags)
+			loss = loss(tag_scores, tags)
 			loss.backward()
 			optimizer.step()
 
@@ -568,14 +194,14 @@ def train(model, optimizer):
 		# store model state
 		ckpt = {
 			"epoch": epoch + 1,
-			"model_state_dict": model.state_dict(),
+			"model_state_dict": .model.state_dict(),
 			"optimizer_state_dict": optimizer.state_dict()
 		}
 		# validate
-		accuracy = validate(model=model)
+		accuracy = validate(model)
 		print("Accuracy on validation set: " + str(accuracy))
 		# save checkpoint
-		save_ckpt(ckpt, is_best)
+		utils.save_ckpt(ckpt, is_best)
 		epoch += 1
 		# model is improving
 		if accuracy > best_accuracy:
@@ -598,7 +224,7 @@ def validate(model):
 	"""
 	Validates model on development set and computes accuracy.
 
-	:param model: (torch.nn) -> the neural network
+	:return: None
 	"""
 
 	print("validating model...")
@@ -623,25 +249,10 @@ def validate(model):
 			inferences += [np.argmax(t_s) for t_s in tag_scores]
 			ground_truth += [np.argmax(t) for t in tags]
 
-	accuracy = compute_accuracy(inferences, ground_truth)
+	accuracy = utils.compute_accuracy(inferences, ground_truth)
 
 	# model will always be in train mode unless its running inference ops
 	model.train()
-
-	return accuracy
-
-def compute_accuracy(inferences, ground_truth):
-	"""
-	Compute accuracy of model predictions.
-
-	:param classifications: (list(int)) -> list of classifications
-	:param ground_truth: (list(int)) -> list of ground truth values
-
-	:return: (float) -> accuracy
-	"""
-
-	diff_map = [1 if inf == g_t else 0 for inf, g_t in zip(inferences, ground_truth)]
-	accuracy = sum(diff_map) / len(diff_map)
 
 	return accuracy
 
@@ -650,19 +261,18 @@ def main():
 	"""
 	Drives the program.
 	"""
+	
+	num_classes = 5
+	model = models.densenet121(pretrained=True)
+	model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.Softmax(dim=1))
+	optimizer = optim.Adam(model.parameters(), lr=0.1)
+	loss = nn.NLLLoss()
 
-	ae = AnalyticEngine(num_classes=2).get_model()
-	opt = optim.Adam(ae.parameters(), lr=0.001)
-	train(ae, opt)
+	model = train(model, optimizer, loss)
+
 
 if __name__ == "__main__":
 	main()
-
-
-
-
-
-
 
 
 
