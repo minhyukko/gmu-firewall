@@ -1,9 +1,12 @@
 """
-The folllowing functions perform preprocessing and postprocessing
+Utility functions.
 """
 
+import torch
+import torch.optim as optim
 import json
 import os
+import shutil
 
 """
 Constants
@@ -314,5 +317,64 @@ def get_meta(mode):
 
 	return length, size
 
+def save_ckpt(ckpt, is_best):
+	"""
+	Saves checkpoint.
+
+	:param ckpt: (dict) -> a dictionary storing the state of a model
+	:param is_best: (bool) -> enables special storage of the best model
+
+	:return: None
+	"""
+
+	ckpt_fpath = os.path.join(MODEL_DIR, "ckpt.pt")
+	torch.save(ckpt, ckpt_fpath)
+	if is_best:
+		best_fpath = os.path.join(MODEL_DIR, "model.pt")
+		shutil.copyfile(ckpt_fpath, best_fpath)
+
+def load_ckpt(ckpt_fname, model, optimizer):
+	"""
+	Loads checkpoint.
+
+	:param ckpt_fname: (str) -> the checkpoint filename
+	:param model: (torch.nn) -> the neural network
+	:param optimizer: (torch.optim) -> the optimizer
+
+	:return: None
+	"""
+
+	ckpt_fpath = os.path.join(MODEL_DIR, ckpt_fname)
+	ckpt = torch.load(ckpt_fpath)
+	model.load_state_dict(ckpt["model_state_dict"], strict=False)
+	optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+	
+	return model, optimizer, ckpt["epoch"]
+
+def compute_accuracy(inferences, ground_truth):
+	"""
+	Compute accuracy of model predictions.
+
+	:param inferences: (list(int)) -> list of classifications
+	:param ground_truth: (list(int)) -> list of ground truth values
+
+	:return: (float) -> accuracy
+	"""
+
+	diff_map = [1 if inf == g_t else 0 for inf, g_t in zip(inferences, ground_truth)]
+	accuracy = sum(diff_map) / len(diff_map)
+
+	return accuracy
 
 
+def bin_to_list(self, bin):
+	"""
+	Given a binary sequence stored a string, "b_0b_1b_2...b_n" returns a list
+	where each element is a bit b_i.
+
+	:param bin: (str) -> the binary sequence
+
+	:return: (list) -> a list of ints
+	"""
+
+	return [int(b) for b in bin]
