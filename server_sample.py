@@ -3,6 +3,7 @@ import numpy as np
 import socket
 import time
 import threading
+import os
 #threads = []
 
 def AE(array):
@@ -17,32 +18,38 @@ def AE(array):
 def main(argv):
     HOST = "127.0.0.1"
     PORT = 491
+    
+    server_address = 'socket_fd/uds_socket'
+    T_OUT= .00001
 
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind((HOST,PORT))
-        #s.listen()
-        #conn,addr= s.accept()
-        #with conn:
-            #print("Connected by {}".format(addr))
-        while True:
-            curr_time=time.perf_counter()
-            data,addr = s.recvfrom(7137)
-            print("Connected by {}".format(addr))
-            
-            recv_time = time.perf_counter()
-            #print("Data:{}".format(data2))
-            #print("Type: ", type(data2))
-            if not data:
-                print("Data Not Received\nClosing...\n")
-                conn.sendall(bytes(2))
-                break
+    # Make sure the socket does not already exist
+    try:
+        os.unlink(server_address)
+    except OSError:
+        if os.path.exists(server_address):
+            raise
 
-            data2 = np.frombuffer(data,dtype='S32', count=-1)
-            print("Received Data:{} s".format(recv_time-curr_time))
-            th = threading.Thread(target=AE, args=(data2,))
-            #AE(data2)
-            th.start()
-            #conn.sendall(bytes(1))
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        print("Starting up Socket".format(server_address))
+        s.bind(server_address)
+        s.listen(1)
+        conn, addr= s.accept()
+        with conn :
+            print(f"Connection From {addr}")
+            while True: 
+                #get the size of the data to be transmitted and look for the terminating character < >
+                print("Receive Size...")
+                bytes_size = conn.recv(1024)
+                bytes_size = str(bytes_size, 'utf8')
+                bytes_size = int(bytes_size)
+                print("Received Sze :{}".format(bytes_size))
+                print("Send Ready Message for Data")
+                conn.sendall(bytes(1))
+                print("Receiving Data")
+                data = conn.recv(bytes_size)
+                data = np.frombuffer(data, dtype='S32')
+                print("Data\n{}".format(data))
+                #conn.sendall(bytes(1))
     return
 
 

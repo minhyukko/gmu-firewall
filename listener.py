@@ -3,21 +3,26 @@ import numpy as np
 import scapy.all as scapy
 import socket
  
+BUFF_SIZE = 1024
+
 def main(argv):
     # define a socket before we start listening
     HOST = '127.0.0.1'
     PORT = 491
-    socket=setup_socket(HOST, PORT)
+    server_address = 'socket_fd/uds_socket'
+    socket=setup_socket(server_address)
     #create a global array to keep track of the 
     active_frame=np.empty([0,2])
-    active_frame=scapy.sniff(iface="eth0",prn=add_pkt(active_frame,socket))
+    active_frame=scapy.sniff(iface="eth0",prn=add_pkt(active_frame,socket,server_address))
     return
-def setup_socket(HOST, PORT):
+def setup_socket(server_address):
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((HOST,PORT))
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        print('Connecting to',server_address)
+        s.connect(server_address)
     except socket.error as err:
-        print("Socket creation has failed with error %s"%(err))    
+        print("Socket creation has failed with error %s"%(err)) 
+        sys.exit(1)
     return s
 
 def add_ips(src,dst):
@@ -32,11 +37,12 @@ def add_ips(src,dst):
         sum_string= sum_string+str(src_arr[i])+':'
     return sum_string[:-1]
 
-def add_pkt(a_frame,socket):
+def add_pkt(a_frame,socket,server_address):
     a_frame=a_frame
     s=socket
     def get_pkt(pkt):
         nonlocal a_frame
+        global BUFF_SIZE
         if pkt.haslayer("IP") and pkt.haslayer("TCP"): 
             src=pkt.src
             dst=pkt.dst
@@ -51,29 +57,23 @@ def add_pkt(a_frame,socket):
         # create some kind of hash function to order the packets by
         #a_frame=np.vstack((a_frame,[ip_hash,pkt_hex,src,dst])) 
         a_frame=np.vstack((a_frame,[ip_hash,pkt_hex])) 
-        if(np.shape(a_frame)[0]==222):
+        if(np.shape(a_frame)[0]==BUFF_SIZE):
             # Sort the array by the hash of src+dst IP, then remove the hash
             sorted_arr=a_frame[np.argsort(a_frame[:,0])]
+            # Remove the hash col 
             sorted_arr=np.delete(sorted_arr,0,axis=1)
+            
             print(sorted_arr.dtype)
             sorted_bytes=sorted_arr.tobytes()
-            print(sys.getsizeof(sorted_bytes))
-            #print(type(sorted_arr))
-            #print("size of int:{}".format(sys.getsizeof(sys.getsizeof(0).to_bytes(1,byteorder="little")))
-            #msg_len=sys.getsizeof(sorted_arr)
-            #print("int size:{}, ".format(sys.getsizeof(5)))
-            #print("msg_len: {}\nlength: {}\ntype: {}".format(msg_len,sys.getsizeof(msg_len),type(msg_len)))
-            #s.sendall(sys.getsizeof(sorted_arr).to_bytes(6,byteorder="little"))
-            #print(sorted_arr)
-            #Socket programming
-            print("Sending Data to Server...")
+            arr_size = sys.getsizeof(sorted_bytes)
+            print('arr size:{}'.format(arr_size))
+            print(bytes(str(arr_size),'utf8'))
+            s.sendall(bytes(str(arr_size),'utf8'))
+            s.recv(sys.getsizeof(int()))
+            print("Sending {} Bytes of Data to Server...".format(arr_size))
             s.sendall(sorted_bytes)
-            data = s.recv(sys.getsizeof(int()))
-            print("Received Code {} from Server\n".format(data))
-            #print("Sorted Frame:\n{}".format(sorted_arr))
+            print("Data Sent")
             a_frame=np.empty([0,2])
-            #send the sorted_arr to the socket
-         
     #need to include an interrupt function to close the port when the program is ended
     return get_pkt
 if __name__ == '__main__':
