@@ -13,9 +13,9 @@ def main(argv):
     server_address = 'socket_fd/uds_socket'
     
     #Create Hashmap
-    hm = gf.HashMap(100,.75,25)
      
     socket=setup_socket(server_address)
+    hm = gf.HashMap(100,.75,25,socket)
     #create a global array to keep track of the 
     active_frame=np.empty([0,2])
 
@@ -67,6 +67,9 @@ def add_pkt(hm,a_frame,socket,server_address):
         # create some kind of hash function to order the packets by
         # Add 
         a_frame=np.vstack((a_frame,[ip_hash,scapy.bytes_hex(pkt)])) 
+        
+        hm.add(pkt)
+        # if fin is true get key for pkt
         if(np.shape(a_frame)[0]==BUFF_SIZE):
             # Sort the array by the hash of src+dst IP, then remove the hash
             sorted_arr=a_frame[np.argsort(a_frame[:,0])]
@@ -76,8 +79,6 @@ def add_pkt(hm,a_frame,socket,server_address):
             print(sorted_arr.dtype)
             sorted_bytes=sorted_arr.tobytes()
             arr_size = sys.getsizeof(sorted_bytes)
-            print('arr size:{}'.format(arr_size))
-            print(bytes(str(arr_size),'utf8'))
             s.sendall(bytes(str(arr_size),'utf8'))
             s.recv(sys.getsizeof(int()))
             print("Sending {} Bytes of Data to Server...".format(arr_size))
