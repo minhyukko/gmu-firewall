@@ -2,7 +2,8 @@ import sys
 import numpy as np
 import scapy.all as scapy
 import socket
- 
+import gen_flows as gf
+
 BUFF_SIZE = 1024
 
 def main(argv):
@@ -10,10 +11,15 @@ def main(argv):
     HOST = '127.0.0.1'
     PORT = 491
     server_address = 'socket_fd/uds_socket'
+    
+    #Create Hashmap
+    hm = gf.HashMap(100,.75,25)
+     
     socket=setup_socket(server_address)
     #create a global array to keep track of the 
     active_frame=np.empty([0,2])
-    active_frame=scapy.sniff(iface="eth0",prn=add_pkt(active_frame,socket,server_address))
+
+    active_frame=scapy.sniff(iface="eth0",prn=add_pkt(hm,active_frame,socket,server_address))
     return
 def setup_socket(server_address):
     try:
@@ -37,12 +43,15 @@ def add_ips(src,dst):
         sum_string= sum_string+str(src_arr[i])+':'
     return sum_string[:-1]
 
-def add_pkt(a_frame,socket,server_address):
+def add_pkt(hm,a_frame,socket,server_address):
     a_frame=a_frame
+    hm=hm
     s=socket
     def get_pkt(pkt):
         nonlocal a_frame
+        nonlocal hm
         global BUFF_SIZE
+        
         if pkt.haslayer("IP") and pkt.haslayer("TCP"): 
             src=pkt.src
             dst=pkt.dst
@@ -51,12 +60,13 @@ def add_pkt(a_frame,socket,server_address):
         else:
             #Log NON-TCP packet
             return
+
         add_ips(src,dst)
         #need to insert packet at the end of each block of ip pairs
         ip_hash = hash(add_ips(src,dst))
         # create some kind of hash function to order the packets by
-        #a_frame=np.vstack((a_frame,[ip_hash,pkt_hex,src,dst])) 
-        a_frame=np.vstack((a_frame,[ip_hash,pkt_hex])) 
+        # Add 
+        a_frame=np.vstack((a_frame,[ip_hash,scapy.bytes_hex(pkt)])) 
         if(np.shape(a_frame)[0]==BUFF_SIZE):
             # Sort the array by the hash of src+dst IP, then remove the hash
             sorted_arr=a_frame[np.argsort(a_frame[:,0])]

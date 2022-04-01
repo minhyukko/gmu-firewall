@@ -36,13 +36,14 @@ class FlowNode:#Linked List Node used within hashmap
 
 
 class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
-    def __init__(self, capacity, load_factor, timeout_time):
-        self.size = size# Size of hashmap
+    def __init__(self, capacity, load_factor, timeout_time,socket):
+        self.size = 0# Size of hashmap
         self.arr = [None] * capacity# Create array that i
         self.count = 0#Current Number of completed flows used for json naming
         self.capacity = capacity
         self.load_factor = load_factor
         self.timeout_time =  timeout_time
+        self.socket = socket
 
 
     def add(self, key, flow):#Add new node to the hashmap
@@ -56,12 +57,12 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         else:
             temp = self.arr[i1]
             while (not(temp == None)):
-                if temp.next = None:
+                if temp.next == None:
                     temp.next = flow
                     self.count += 1
                     return
         return
-
+    #Adding the socket to be passed to the remove function to send, could be put as a field of hm
     def add(self, pkt):
         key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         key_inv = str(pkt['IP'].dst) + str(pkt['TCP'].dport)+ str(pkt['IP'].src) + str(pkt['TCP'].sport)
@@ -90,7 +91,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             self.arr[i2].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
             self.count += 1
             is_found = True
-        elif and not is_found:
+        elif not is_found:
             temp = self.arr[i2]
             while (not(temp == None)):
                 if temp.key == key or temp.key == key_inv:
@@ -99,7 +100,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     is_found = True
 
         if is_found and (0x01 & pkt['TCP'].flags):
-            self.remove(key)
+            self.remove(key,self.socket)
 
         
         if is_found == False:
@@ -108,23 +109,24 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         if (self.count/self.capacity) > self.load_factor:
             rehash()
 
-        iif is_found and (0x01 & pkt['TCP'].flags):
+        if is_found and (0x01 & pkt['TCP'].flags):
             self.remove(key_inv)
 
         return
 
-    def remove(self, key):#Removes a flow and saves the flow in json format
+    def remove(self, key,socket):#Removes a flow and saves the flow in json format
         key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
         temp = self.arr[i2]
         prev = temp
-            while (not(temp == None)):
-                if temp.key == key
-                    prev.next = temp.next
-                    #send_pkt(temp.packets, temp.source, temp.src_port, temp.destination, temp.dst_port) - Needs to be added
-                    return
-                prev = temp
-                temp = temp.next
+        while (not(temp == None)):
+            if temp.key == key:
+                prev.next = temp.next
+                #send_pkt(temp.packets, temp.source, temp.src_port, temp.destination, temp.dst_port) - Needs to be added
+                
+                return
+            prev = temp
+            temp = temp.next
 
     def rehash(self):
         new_hash  = HashMap(self.capacity * 2, 0.75)
@@ -144,7 +146,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             temp = self.arr[i]
             while (not (temp == None)):
                 if self.timeout_time > t - temp.time:
-                    self.remove(temp.key)
+                    self.remove(temp.key,self.socket)
                 temp = temp.next
         self = new_hash
         return
@@ -165,7 +167,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         return ans
 
 
-hm = HashMap(100, 0.75, 25) # Recommended initial settings 100 Initial Capacity, 0.75 load factor, and a 25 second timeout time
+#hm = HashMap(100, 0.75, 25) # Recommended initial settings 100 Initial Capacity, 0.75 load factor, and a 25 second timeout time
 
 #Using hashmap to store incoming flows will result in packet drops due to processing time.
 #This is just unfortunate not much we can do in terms of performance I believe this has high efficiency
