@@ -123,7 +123,14 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             if temp.key == key:
                 prev.next = temp.next
                 #send_pkt(temp.packets, temp.source, temp.src_port, temp.destination, temp.dst_port) - Needs to be added
-                
+                d = {'packets':temp.packets, 'source':temp.source, 'destination':temp.destination}
+                data = json.dumps(d)
+                data2 = sys.getsizeof(data)
+                self.socket.sendall(bytes(str(data2)),'utf8')
+                r = self.socket.recv(sys.getsizeof(int()))
+                self.socket.sendall(bytes(data), 'utf8')
+
+
                 return
             prev = temp
             temp = temp.next
