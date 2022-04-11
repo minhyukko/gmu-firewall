@@ -28,7 +28,9 @@ class FlowNode:#Linked List Node used within hashmap
         self.key = hash(str(source) + str(src_port) + str(destination) + str(dst_port))
         self.key_inv = hash(str(source) + str(src_port) + str(destination) + str(dst_port))
         self.t = t
+        ### Is this an array of tcp headers? I thought that we remove the payload of the packets to just retrieve the headers
         self.packets = []
+        # So if there are two items that both fit the same hashmap slot what do we do?
         self.next = None
 
     def __repr__(self):#String representation of Node used for debugging
@@ -46,7 +48,6 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.socket = socket
 
     def addf(self, key, flow):#Add new node to the hashmap
-        print("Flow Add",self.count)
         ### pkt cannot be used here, substituting this new flow creation for the passed flow
         key = str(flow.source)+ str(flow.src_port)+str(flow.destination)+str(flow.dst_port)
              #str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
@@ -64,6 +65,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             while (not(temp == None)):
                 if temp.next == None:
                     temp.next = flow
+                    ### Do we need to append the payload line here?
                     self.count += 1
                     return
                 temp = temp.next
@@ -77,64 +79,106 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         i1 = hash(key) % self.capacity
         i2 = hash(key_inv) % self.capacity
 
-        is_found = False
+        isfound = False
         ### There can be a situation where i1 is not present but i2 is
         ### we are creating flows for every direciton of traffic with this
-        if self.arr[i1] == None:
+        
+        ### We look to see if either key or key_inv is present. If neither is, create flow pased off of key
+        if self.arr[i1] == None and self.arr[i2]==None:
             self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
             self.arr[i1].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
             self.count += 1
-            is_found = True
-        else:
+            isfound = True
+        ### This section adds the packet to the proper location in the hm
+        ### If either is present, add the packet to the present flow
+        elif not(self.arr[i1] == None) and self.arr[i2] == None:
+            ### Search through the present hm slot and if there is no match to our packet info create a flow in the empty hm slot
             temp = self.arr[i1]
-            #print(84)
-            while (not(temp == None)):
-                if temp.key == key or temp.key == key_inv:
+            isfound = False
+            while True:
+                if temp.key == key:
                     temp.t = time.time()
-                    temp.packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
-                    is_found = True
+                    temp.packets.append()
+                    self.count+=1
+                    isfound= True
+                if(temp.next==None):
+                    break
                 temp = temp.next
+            if(not isfound):
+                self.arr[i2] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+                self.arr[i2].packets.append(pkt)
+                self.count +=1
 
-
-        if self.arr[i2] == None and not is_found:
-            self.arr[i2] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-            self.arr[i2].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
-            self.count += 1
-            is_found = True
-        elif not is_found:
+        elif self.arr[i1] == None and not(self.arr[i2] ==  None):
+            ### Add the packet to self.arr[2]
             temp = self.arr[i2]
-            #print(100)
-            while (not(temp == None)):
-                if temp.key == key or temp.key == key_inv:
+            isfound = False
+            while True:
+                if temp.key == key:
                     temp.t = time.time()
-                    temp.packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
-                    is_found = True
+                    temp.packets.append()
+                    self.count+=1
+                    isfound= True
+                if(temp.next==None):
+                    break
                 temp = temp.next
+            if(not isfound):
+                self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+                self.arr[i1].packets.append(pkt)
+                self.count +=1
 
-        if is_found and (0x01 & pkt['TCP'].flags):
+        elif not(self.arr[i1] == None) and not(self.arr[i2] == None):            
+            ### Actually, there can be flows that are in the same hm slot
+            ### So we actually want to search the slot if its full for a match to our src/dst ip/ports if there is none in either then add to 1
+            temp = self.arr[i2]
+            isfound = False
+            while True:
+                if temp.key == key:
+                    temp.t = time.time()
+                    temp.packets.append()
+                    self.count+=1
+                    isfound= True
+                if(temp.next==None):
+                    break
+                temp = temp.next
+            if(not isfound):
+                temp = self.arr[i1]
+                isfound = False
+                while True:
+                    if temp.key == key:
+                        temp.t = time.time()
+                        temp.packets.append(pkt)
+                        self.count+=1
+                        isfound= True
+                    if(temp.next==None):
+                        break
+                    temp = temp.next
+            if(not isfound):
+                ### Both hm slots have entries but none of them match the socket we are looking for, add to 1
+                temp.next=FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+                temp = temp.next
+                temp.t = time.time()
+                temp.packets.append(pkt)
+                self.count +=1
+                isfound=True
+        if isfound and (pkt['TCP'].flags.F):
             self.remove(key)
-
         
-        if is_found == False:
-            self.addf(key,FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time()))
-
         if (self.count/self.capacity) > self.load_factor:
+            print(self.count, self.capacity)
             self.rehash()
-            print(self.capacity)
-        print(type(pkt['TCP'].flags&0x01),pkt['TCP'].flags&0x01)
-        if is_found and (pkt['TCP'].flags.F):
-            print('here')
-            self.remove(key_inv)
+            print(self.count, self.capacity)
         return
 
     def remove(self, key):#Removes a flow and saves the flow in json format
         ### A key is passed, no key is needed
+        print("Remove")
         #key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
-        temp = self.arr[i2]
+        temp = self.arr[i1]
         prev = temp
         print(126)
-        while (not(temp == None)):
+        while True:
             if temp.key == key:
                 prev.next = temp.next
                 print("Send Single Flow") 
@@ -147,15 +191,17 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 r = self.socket.recv(sys.getsizeof(int()))
                 self.socket.sendall(bytes(data), 'utf8')
 
-
-                return 
+                return
+            if(temp.next==None):
+                print('End')
+                break
             prev = temp
             temp = temp.next
 
     def rehash(self):
         ###Should this instantiation be all the same filed as the current HashMap (except for capacity)?
         new_hash  = HashMap(self.capacity * 2, self.load_factor, self.timeout_time, self.socket)
-        print("Rehash from:", self.capacity, "\nTo:",new_hash.capacity)
+        #print("Rehash from:", self.capacity, "\nTo:",new_hash.capacity)
         
         for x in self.arr:
             temp = x
@@ -167,7 +213,6 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 new_hash.addf(temp.key,t2)
                 temp = temp.next
         self = new_hash
-        print(self.capacity)
         return
 
     def check_timeouts(self, t):
