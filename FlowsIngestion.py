@@ -107,7 +107,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.arr = [None] * self.size# Create array that i
         self.attack = attack# Attack type for the days Flow
         self.count = 0#Current Number of completed flows used for json naming
-
+        print([self.size, self.arr, self.attack, self.count])
     def add(self, flow):#Add new node to the hashmap
        # print("Adding")
         key = flow[dic['source']] + flow[dic['destination']]

@@ -42,13 +42,13 @@ def main(argv):
                 bytes_size = conn.recv(1024)
                 bytes_size = str(bytes_size, 'utf8')
                 bytes_size = int(bytes_size)
-                print("Received Sze :{}".format(bytes_size))
+                print("Received Size :{}".format(bytes_size))
                 print("Send Ready Message for Data")
                 conn.sendall(bytes(1))
                 print("Receiving Data")
                 data = conn.recv(bytes_size)
                 data = np.frombuffer(data, dtype='S32')
-                print("Data\n{}".format(data))
+                print("Data\n{}".format(sys.getsizeof(data)))
                 #conn.sendall(bytes(1))
     return
 

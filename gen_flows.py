@@ -36,7 +36,7 @@ class FlowNode:#Linked List Node used within hashmap
 
 
 class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
-    def __init__(self, capacity, load_factor, timeout_time,socket):
+    def __init__(self, capacity, load_factor, timeout_time, socket):
         self.size = 0# Size of hashmap
         self.arr = [None] * capacity# Create array that i
         self.count = 0#Current Number of completed flows used for json naming
@@ -45,32 +45,41 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.timeout_time =  timeout_time
         self.socket = socket
 
-
-    def add(self, key, flow):#Add new node to the hashmap
-        key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
+    def addf(self, key, flow):#Add new node to the hashmap
+        print("Flow Add",self.count)
+        ### pkt cannot be used here, substituting this new flow creation for the passed flow
+        key = str(flow.source)+ str(flow.src_port)+str(flow.destination)+str(flow.dst_port)
+             #str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
         if self.arr[i1] == None:
-            self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+            ### pkt cannot be used here, substituting this new flow creation for the passed flow
+            self.arr[i1] = flow
+                          #FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
             self.arr[i1].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
             self.count += 1
             return
         else:
             temp = self.arr[i1]
+            #print(59)
             while (not(temp == None)):
                 if temp.next == None:
                     temp.next = flow
                     self.count += 1
                     return
+                temp = temp.next
+        
         return
-    #Adding the socket to be passed to the remove function to send, could be put as a field of hm
+    
     def add(self, pkt):
+        print("Packet Add",self.count)
         key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         key_inv = str(pkt['IP'].dst) + str(pkt['TCP'].dport)+ str(pkt['IP'].src) + str(pkt['TCP'].sport)
         i1 = hash(key) % self.capacity
         i2 = hash(key_inv) % self.capacity
 
         is_found = False
-
+        ### There can be a situation where i1 is not present but i2 is
+        ### we are creating flows for every direciton of traffic with this
         if self.arr[i1] == None:
             self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
             self.arr[i1].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
@@ -78,12 +87,13 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             is_found = True
         else:
             temp = self.arr[i1]
+            #print(84)
             while (not(temp == None)):
                 if temp.key == key or temp.key == key_inv:
                     temp.t = time.time()
                     temp.packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
                     is_found = True
-
+                temp = temp.next
 
 
         if self.arr[i2] == None and not is_found:
@@ -93,67 +103,80 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             is_found = True
         elif not is_found:
             temp = self.arr[i2]
+            #print(100)
             while (not(temp == None)):
                 if temp.key == key or temp.key == key_inv:
                     temp.t = time.time()
                     temp.packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
                     is_found = True
+                temp = temp.next
 
         if is_found and (0x01 & pkt['TCP'].flags):
-            self.remove(key,self.socket)
+            self.remove(key)
 
         
         if is_found == False:
-            self.add(FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time()))
+            self.addf(key,FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time()))
 
         if (self.count/self.capacity) > self.load_factor:
-            rehash()
-
-        if is_found and (0x01 & pkt['TCP'].flags):
+            self.rehash()
+            print(self.capacity)
+        print(type(pkt['TCP'].flags&0x01),pkt['TCP'].flags&0x01)
+        if is_found and (pkt['TCP'].flags.F):
+            print('here')
             self.remove(key_inv)
-
         return
 
-    def remove(self, key,socket):#Removes a flow and saves the flow in json format
-        key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
+    def remove(self, key):#Removes a flow and saves the flow in json format
+        ### A key is passed, no key is needed
+        #key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
         temp = self.arr[i2]
         prev = temp
+        print(126)
         while (not(temp == None)):
             if temp.key == key:
                 prev.next = temp.next
-                #send_pkt(temp.packets, temp.source, temp.src_port, temp.destination, temp.dst_port) - Needs to be added
+                print("Send Single Flow") 
+                #Sends the messages to the Server in the order expected(-> size, <- confirmation, -> data)
                 d = {'packets':temp.packets, 'source':temp.source, 'destination':temp.destination}
                 data = json.dumps(d)
                 data2 = sys.getsizeof(data)
+                print(data2)
                 self.socket.sendall(bytes(str(data2)),'utf8')
                 r = self.socket.recv(sys.getsizeof(int()))
                 self.socket.sendall(bytes(data), 'utf8')
 
 
-                return
+                return 
             prev = temp
             temp = temp.next
 
     def rehash(self):
-        new_hash  = HashMap(self.capacity * 2, 0.75)
+        ###Should this instantiation be all the same filed as the current HashMap (except for capacity)?
+        new_hash  = HashMap(self.capacity * 2, self.load_factor, self.timeout_time, self.socket)
+        print("Rehash from:", self.capacity, "\nTo:",new_hash.capacity)
+        
         for x in self.arr:
-            temp = self.arr[i]
-            
+            temp = x
+                  #self.arr[i]
+            #print(148)
             while (not (temp == None)):
                 t2 = temp
                 t2.next = None
-                new_hash.add(t2)
+                new_hash.addf(temp.key,t2)
                 temp = temp.next
         self = new_hash
+        print(self.capacity)
         return
 
     def check_timeouts(self, t):
         for x in self.arr:
             temp = self.arr[i]
+            print(160)
             while (not (temp == None)):
                 if self.timeout_time > t - temp.time:
-                    self.remove(temp.key,self.socket)
+                    self.remove(temp.key)
                 temp = temp.next
         self = new_hash
         return
@@ -166,9 +189,11 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             else:
                 temp = self.arr[i]
                 ans += "[" + str(i) + "]Head>"
+                #print(177)
                 while(not (temp == None)):
                     ans += " > "
-                    ans += temp.source + " " + temp.destination + " " + str(temp.startDateTime)
+                    ### This function was calling for startDateTime, I swapped to src and dst ports
+                    ans += temp.source +":"+str(temp.src_port)+ " " + temp.destination + ":"+str(temp.dst_port)
                     temp = temp.next
             ans += "\n"
         return ans
