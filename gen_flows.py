@@ -56,7 +56,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             ### pkt cannot be used here, substituting this new flow creation for the passed flow
             self.arr[i1] = flow
                           #FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-            self.arr[i1].packets.append("Payload Line")#Add payload to FlowNode - Replace Payload Line
+            self.arr[i1].packets.append(pkt)#Add payload to FlowNode - Replace Payload Line
             self.count += 1
             return
         else:
@@ -75,9 +75,15 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         return
     
     def add(self, pkt):
+        src = pkt['IP'].src
+        dst = pkt['IP'].dst
+        dport = pkt['TCP'].dport
+        sport = pkt['TCP'].sport
+        FIN = pkt['TCP'].flags.F
+        b_pkt = pkt_to_bin(pkt)
         print("Packet Add",self.count)
-        key = hash(str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport))
-        key_inv = hash(str(pkt['IP'].dst) + str(pkt['TCP'].dport)+ str(pkt['IP'].src) + str(pkt['TCP'].sport))
+        key = hash(str(src) + str(sport)+ str(dst) + str(dport))
+        key_inv = hash(str(dst) + str(dport)+ str(src) + str(sport))
         i1 = hash(key) % self.capacity
         i2 = hash(key_inv) % self.capacity
         new_hash = self
@@ -87,8 +93,8 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         
         ### We look to see if either key or key_inv is present. If neither is, create flow pased off of key
         if self.arr[i1] == None and self.arr[i2]==None:
-            self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-            self.arr[i1].packets.append(pkt['TCP'])#Add payload to FlowNode - Replace Payload Line
+            self.arr[i1] = FlowNode(src, sport, dst, dport, time.time())
+            self.arr[i1].packets.append(b_pkt)#Add payload to FlowNode - Replace Payload Line
             self.count += 1
             isfound = True
         ### This section adds the packet to the proper location in the hm
@@ -100,15 +106,15 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             while True:
                 if temp.key == key:
                     temp.t = time.time()
-                    temp.packets.append(pkt)
+                    temp.packets.append(b_pkt)
                     #self.count+=1
                     isfound= True
                 if(temp.next==None):
                     break
                 temp = temp.next
             if(not isfound):
-                self.arr[i2] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-                self.arr[i2].packets.append(pkt['TCP'])
+                self.arr[i2] = FlowNode(src, sport, dst, dport, time.time())
+                self.arr[i2].packets.append(b_pkt)
                 self.count +=1
 
         elif self.arr[i1] == None and not(self.arr[i2] ==  None):
@@ -118,15 +124,15 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             while True:
                 if temp.key == key:
                     temp.t = time.time()
-                    temp.packets.append(pkt['TCP'])
+                    temp.packets.append(b_pkt)
                     #self.count+=1
                     isfound= True
                 if(temp.next==None):
                     break
                 temp = temp.next
             if(not isfound):
-                self.arr[i1] = FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-                self.arr[i1].packets.append(pkt['TCP'])
+                self.arr[i1] = FlowNode(src, sport, dst, dport, time.time())
+                self.arr[i1].packets.append(b_pkt)
                 self.count +=1
 
         elif not(self.arr[i1] == None) and not(self.arr[i2] == None):            
@@ -137,7 +143,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             while True:
                 if temp.key == key:
                     temp.t = time.time()
-                    temp.packets.append(pkt['TCP'])
+                    temp.packets.append(b_pkt)
                     #self.count+=1
                     isfound= True
                 if(temp.next==None):
@@ -149,7 +155,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 while True:
                     if temp.key == key:
                         temp.t = time.time()
-                        temp.packets.append(pkt['TCP'])
+                        temp.packets.append(b_pkt)
                         #self.count+=1
                         isfound= True
                     if(temp.next==None):
@@ -157,13 +163,13 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     temp = temp.next
             if(not isfound):
                 ### Both hm slots have entries but none of them match the socket we are looking for, add to 1
-                temp.next=FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+                temp.next=FlowNode(src, sport, dst, dport, time.time())
                 temp = temp.next
                 temp.t = time.time()
-                temp.packets.append(pkt['TCP'])
+                temp.packets.append(b_pkt)
                 self.count +=1
                 isfound=True
-        if isfound and (pkt['TCP'].flags.F):
+        if isfound and (FIN):
             self.remove(key)
         
         if (self.count/self.capacity) > self.load_factor:
@@ -186,16 +192,17 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             if temp.key == key:
                 prev.next = temp.next
                 print("Send Single Flow") 
-                print(temp.packets[0].summary())
                 #Sends the messages to the Server in the order expected(-> size, <- confirmation, -> data)
                 d = {'packets':temp.packets, 'source':temp.source, 'destination':temp.destination}
                 data = json.dumps(d)
                 data = data.encode(encoding = 'UTF-8')
+                print(type(data))
                 data2 = sys.getsizeof(data)
                 print(data2)
-                self.socket.sendall(bytes(str(data2)),'utf8')
+                self.socket.sendall(bytes(str(data2),encoding = 'utf8'))
                 r = self.socket.recv(sys.getsizeof(int()))
-                self.socket.sendall(bytes(data), 'utf8')
+                self.socket.sendall(data)
+
                 
                 
                 return
@@ -250,6 +257,24 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     temp = temp.next
             ans += "\n"
         return ans
+def pkt_to_bin(pkt):
+    line_length = 0
+    file_num = 0
+    image_arr = []
+    i = 0
+    t_pkt = pkt
+
+    if pkt.haslayer("IP"):
+        if pkt.haslayer("TCP"):
+            t_pkt.remove_payload()
+        elif pkt.haslayer("UDP"):
+            t_pkt.remove_payload()
+        else:
+            t_pkt.remove_payload()
+    pkt_hex=compat.bytes_hex(t_pkt)
+    pkt_bin = bin (int.from_bytes(pkt_hex, byteorder= sys.byteorder))
+    pkt_final = pkt_bin[2:]
+    return pkt_final
 
 
 #hm = HashMap(100, 0.75, 25) # Recommended initial settings 100 Initial Capacity, 0.75 load factor, and a 25 second timeout time

@@ -47,7 +47,8 @@ def main(argv):
                 conn.sendall(bytes(1))
                 print("Receiving Data")
                 data = conn.recv(bytes_size)
-                data = np.frombuffer(data, dtype='S32')
+                print(data) 
+                #data = np.frombuffer(data, dtype='S32')
                 print("Data\n{}".format(sys.getsizeof(data)))
                 #conn.sendall(bytes(1))
     return
