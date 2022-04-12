@@ -4,6 +4,8 @@ Utility functions.
 
 import torch
 import torch.optim as optim
+from torchvision import transforms
+import numpy as np
 import json
 import os
 import shutil
@@ -15,9 +17,79 @@ DATA_DIR = "data/"
 TRAIN_DIR = os.path.join(DATA_DIR, "train")
 TEST_DIR = os.path.join(DATA_DIR, "test")
 DEV_DIR = os.path.join(DATA_DIR, "dev")
-PCKT_DIM = 224
+MODEL_DIR = "model/"
+INPUT_DIM = 224
 
-def preprocess_data(fname):
+def preprocess_rt(data):
+	"""
+	Preprocesses data for input to the model during real-time execution.
+	It transforms each flow into a (3, INPUT_DIM, INPUT_DIM) binary torch tensor.
+	The passed dictionary will look like this:
+	{
+		"flows":[
+					{
+						"packets": (222,) array (str)
+						"sip": (str)         
+						"sport": (int)
+					}
+					.
+					.
+					.
+				]	
+
+	}
+
+	:param flows: (dict) -> the data
+
+	:return: (dict) -> the preprocessed data
+	"""
+
+	# normalize flows to (INPUT_DIM,) dimensions
+	flows = data["flows"]
+	for f in flows:
+		pckts = f["packets"]
+		
+		# truncate or bottom-pad packet array
+		if len(pckts) > INPUT_DIM:
+			pckts = pckts[0:INPUT_DIM]
+		else:
+			pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
+
+		# truncate or right-pad each packet
+		if len(pckts[0]) > INPUT_DIM:
+			pckts = [p[0:INPUT_DIM] for p in pckts]
+		else:
+			pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
+
+		pckts = numerize_packets(pckts)
+
+		# apply changes
+		f["packets"] = pckts
+
+	# apply changes
+	data["flows"] = flows
+	
+	return data
+
+def numerize_packets(pckts):
+	"""
+	Transforms packet representation from list<str> -> binary tensor (3, INPUT_DIM, INPUT_DIM) and normalizes distribution.
+
+	:param pckts: (array(str)) -> (222,) array of strings each of length 222
+
+	:return: (torch.tensor) -> binary tensor 
+	"""
+
+	pckts = np.array([bin_to_list(p) for p in pckts])
+	filler = np.zeros((INPUT_DIM, INPUT_DIM))
+	pckts = np.stack([pckts, filler, filler])
+	pckts = torch.tensor(pckts, dtype=torch.float32)
+	normalize_func = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+	pckts = normalize_func(pckts)
+
+	return pckts
+
+def preprocess_train(fname):
 	"""
 	The passed file is assumed to be in JSON format and to have this structure:
 	{
@@ -50,7 +122,7 @@ def preprocess_data(fname):
 		]
 	}
 	It is a dictionary where each key points to a list of {"packets": [packets], Tag:[tag]} dictionaries.
-	Preprocesses the data so it is in order; currently only modifies packet arrays to be of shape (PCKT_DIM, PCKT_DIM).
+	Preprocesses the data; currently only modifies packet arrays to be of shape (INPUT_DIM,).
 	Writes the output to data/data_preproc.json.
 	
 	:param fname: (str) -> the filename
@@ -64,82 +136,79 @@ def preprocess_data(fname):
 	with open(fpath) as infile:
 		data = json.load(infile)
 	
-	# normalize train packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
+	# normalize train packet arrays to (INPUT_DIM,) dimensions
 	train_data = data["train"]
 	for datum in train_data:
 		pckts = datum["packets"]
 		
 		# truncate or bottom-pad packet array
-		
-		
-		if len(pckts) > PCKT_DIM:
-			pckts = pckts[0:PCKT_DIM]
+		if len(pckts) > INPUT_DIM:
+			pckts = pckts[0:INPUT_DIM]
 		else:
-			pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
+			pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
 		
 		# truncate or right-pad each packet
-		if len(pckts[0]) > PCKT_DIM:
-			pckts = [p[0:PCKT_DIM] for p in pckts]
+		if len(pckts[0]) > INPUT_DIM:
+			pckts = [p[0:INPUT_DIM] for p in pckts]
 		else:
-			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
+			pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
 
 		# apply changes
 		datum["packets"] = pckts
 	
 	data["train"] = train_data
 
-	# normalize test packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
+	# normalize test packet arrays to (INPUT_DIM,) dimensions
 	test_data = data["test"]
 	for datum in test_data:
 		pckts = datum["packets"]
 		
 		# truncate or bottom-pad packet array
-		if len(pckts) > PCKT_DIM:
-			pckts = pckts[0:PCKT_DIM]
+		if len(pckts) > INPUT_DIM:
+			pckts = pckts[0:INPUT_DIM]
 		else:
-			pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
+			pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
 		
 		# truncate or right-pad each packet
-		if len(pckts[0]) > PCKT_DIM:
-			pckts = [p[0:PCKT_DIM] for p in pckts]
+		if len(pckts[0]) > INPUT_DIM:
+			pckts = [p[0:INPUT_DIM] for p in pckts]
 		else:
-			pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
+			pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
 		
 		# apply changes
 		datum["packets"] = pckts
 	
 	data["test"] = test_data
 
+	# normalize dev packet arrays to (INPUT_DIM,) dimensions
+	dev_data = data["dev"]
+	for datum in dev_data:
+		pckts = datum["packets"]
+		
+		# truncate or bottom-pad packet array
+		if len(pckts) > INPUT_DIM:
+			pckts = pckts[0:INPUT_DIM]
+		else:
+			pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
+		
+		# truncate or right-pad each packet
+		if len(pckts[0]) > INPUT_DIM:
+			pckts = [p[0:INPUT_DIM] for p in pckts]
+		else:
+			pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
+		
+		# apply changes
+		datum["packets"] = pckts
+	
+	data["dev"] = dev_data
+
 	preproc_fpath = os.path.join(DATA_DIR, "data_preproc.json")
 	with open(preproc_fpath, "w") as outfile:
 		json.dump(data, outfile, indent=4)
 
-	# normalize test packet arrays to (PCKT_DIM, PCKT_DIM) dimensions
-	# dev_data = data["dev"]
-	# for datum in dev_data:
-	# 	pckts = datum["packets"]
-		
-	# 	# truncate or bottom-pad packet array
-	# 	if len(pckts) > PCKT_DIM:
-	# 		pckts = pckts[0:PCKT_DIM]
-	# 	else:
-	# 		pckts += ["0"*(PCKT_DIM)]*(PCKT_DIM - len(pckts))
-		
-	# 	# truncate or right-pad each packet
-	# 	if len(pckts[0]) > PCKT_DIM:
-	# 		pckts = [p[0:PCKT_DIM] for p in pckts]
-	# 	else:
-	# 		pckts = [p + ("0"*(PCKT_DIM - len(p))) for p in pckts]
-		
-	# 	# apply changes
-	# 	datum["packets"] = pckts
-	
-	# data["dev"] = dev_data
-
-
-def check_preprocess(fname):
+def check_training(fname):
 	"""
-	Checks if the data file has been properly preprocessed.
+	Checks if the training file has been properly preprocessed.
 
 	:param fname: (str) -> the filename of the preprocessed dataset
 
@@ -159,7 +228,7 @@ def check_preprocess(fname):
 		pckts = datum["packets"]
 		num_packets = len(pckts)
 		size_packets = len(pckts[0])
-		if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
+		if num_packets != INPUT_DIM or size_packets != INPUT_DIM:
 			preprocessed = False
 			print("[Train] Flow " + str(i) + " is not normalized")
 			print("shape=" + str((num_packets, size_packets)))
@@ -169,20 +238,20 @@ def check_preprocess(fname):
 		pckts = datum["packets"]
 		num_packets = len(pckts)
 		size_packets = len(pckts[0])
-		if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
+		if num_packets != INPUT_DIM or size_packets != INPUT_DIM:
 			preprocessed = False
 			print("[Test] Flow " + str(i) + " is not normalized")
 			print("shape=" + str((num_packets, size_packets)))
 
-	# dev_data = data["dev"]
-	# for i, datum in enumerate(dev_data):
-	# 	pckts = datum["packets"]
-	# 	num_packets = len(pckts)
-	# 	size_packets = len(pckts[0])
-	# 	if num_packets != PCKT_DIM or size_packets != PCKT_DIM:
-	# 		preprocessed = False
-	# 		print("[Test] Flow " + str(i) + " is not normalized")
-	#		print("shape=" + str((num_packets, size_packets)))
+	dev_data = data["dev"]
+	for i, datum in enumerate(dev_data):
+		pckts = datum["packets"]
+		num_packets = len(pckts)
+		size_packets = len(pckts[0])
+		if num_packets != INPUT_DIM or size_packets != INPUT_DIM:
+			preprocessed = False
+			print("[Test] Flow " + str(i) + " is not normalized")
+			print("shape=" + str((num_packets, size_packets)))
 
 	return preprocessed
 
@@ -269,24 +338,26 @@ def split_data(fname, train_size, test_size, dev_size):
 		with open(segment_fpath, "w") as outfile:
 			json.dump(segment, outfile, indent=4)
 
+	# write test meta
 	test_meta = {"length": len(test_data), "size": test_size}
 	with open(os.path.join(TEST_DIR, "test_meta.json"), "w") as outfile:
 		json.dump(test_meta, outfile, indent=4)
 
 
 	# split dev portion
-	# dev_data = data["dev"]
-	# for i in range(0,len(dev_data),dev_size):
-	# 	segment = {}
-	# 	segment["dev"] = test_data[i:min(i+dev_size, len(dev_data))]
-	# 	mod_fname = "dev_" + str(int(i/dev_size)) + ".json"
-	# 	segment_fpath = os.path.join(DEV_DIR, mod_fname) # data/dev/dev_i.json
-	# 	with open(segment_fpath, "w") as outfile:
-	# 		json.dump(segment, outfile, indent=4)
+	dev_data = data["dev"]
+	for i in range(0,len(dev_data),dev_size):
+		segment = {}
+		segment["dev"] = test_data[i:min(i+dev_size, len(dev_data))]
+		mod_fname = "dev_" + str(int(i/dev_size)) + ".json"
+		segment_fpath = os.path.join(DEV_DIR, mod_fname) # data/dev/dev_i.json
+		with open(segment_fpath, "w") as outfile:
+			json.dump(segment, outfile, indent=4)
 
-	# dev_meta = {"length": len(dev_data), "size": dev_size}
-	# with open(os.path.join(DEV_DIR, "dev_meta.json"), "w") as outfile:
-	# 	json.dump(dev_meta, outfile, indent=4)
+	# write dev meta
+	dev_meta = {"length": len(dev_data), "size": dev_size}
+	with open(os.path.join(DEV_DIR, "dev_meta.json"), "w") as outfile:
+		json.dump(dev_meta, outfile, indent=4)
 
 def get_meta(mode):
 	"""
@@ -333,7 +404,7 @@ def save_ckpt(ckpt, is_best):
 		best_fpath = os.path.join(MODEL_DIR, "model.pt")
 		shutil.copyfile(ckpt_fpath, best_fpath)
 
-def load_ckpt(ckpt_fname, model, optimizer):
+def load_ckpt(ckpt_fname, model=None, optimizer=None):
 	"""
 	Loads checkpoint.
 
@@ -346,17 +417,21 @@ def load_ckpt(ckpt_fname, model, optimizer):
 
 	ckpt_fpath = os.path.join(MODEL_DIR, ckpt_fname)
 	ckpt = torch.load(ckpt_fpath)
-	model.load_state_dict(ckpt["model_state_dict"], strict=False)
-	optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+	if model != None:
+		model.load_state_dict(ckpt["model_state_dict"], strict=False)
+	if optimizer != None:
+		optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 	
-	return model, optimizer, ckpt["epoch"]
+	epoch = ckpt["epoch"]
+
+	return model, optimizer, epoch
 
 def compute_accuracy(inferences, ground_truth):
 	"""
 	Compute accuracy of model predictions.
 
-	:param inferences: (list(int)) -> list of classifications
-	:param ground_truth: (list(int)) -> list of ground truth values
+	:param inferences: (torch.tensor) -> list of classifications
+	:param ground_truth: (torch.tensor) -> list of ground truth values
 
 	:return: (float) -> accuracy
 	"""
@@ -367,7 +442,7 @@ def compute_accuracy(inferences, ground_truth):
 	return accuracy
 
 
-def bin_to_list(self, bin):
+def bin_to_list(bin):
 	"""
 	Given a binary sequence stored a string, "b_0b_1b_2...b_n" returns a list
 	where each element is a bit b_i.

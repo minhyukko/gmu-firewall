@@ -3,12 +3,14 @@ import json
 import selectors
 import sys
 import utils
+import torch
 
 """
 Networking Parameters.
 """
 HOST = "127.0.0.1"
-PORT = 49152
+PORT = 4912
+SIZE_INT = 24
 
 """
 Model device.
@@ -25,22 +27,18 @@ BATCH_SIZE = 32
 """
 NE-AE Message Protocol:
 
-{
-	"meta": {
-				message_length: (int)    # bytes
-				flow_lengths: tuple(int) # bytes
-			}
+message_length: n
 
-	"data": [
-				{
-					"packets": (222,) array (str)
-					"sip": (str)         
-					"sport": (int)
-				}
-				.
-				.
-				.
-				]	
+{
+
+	"flow":
+			{
+				"packets": (222,) array (str)
+				"dip": (str)
+				"dport": (int)
+				"sip": (str)      
+				"sport": (int)
+			}	
 
 }
 
@@ -85,76 +83,38 @@ ALG:
 			else:
 				store the flow in buf
 
-Potential Issues:
-	- novelty of using non-blocking sockets
-
 """
 
-def terminate_connection(s, err=False):
-	if err == True:
-		print("connection broken, shutting down...")
-	else:
-		print("terminating connection...")
+def setup_listener(s):
 	
-	s.close()
 
-	quit()
-
-def initiate_connection(s):
-
-	print(f"connecting to {HOST}, {PORT}")
-	s.connect((HOST, PORT))
+	print(f"setting up listener on {HOST}, {PORT}...")
+	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+	s.bind((HOST, PORT))
+	s.listen()
 
 	return s
 
-def get_data(s):
-
-	print("getting data...")
-
-	# send flow signal
-	print("    sending signal for data...")
-	s.sendall(b"1")
-
-	# read data
-	print("    sending queries to server...")
-	data = ""
-	d = ""
-	i = 0
-	while True:
-		d = s.recv(1024)
-		print(f"		message {i} received")
-		if not d:
-			s.sendall(b"")
-			terminate_connection(s)
-		d = d.decode()
-		data += d
-		if "END" in d:
-			data = data[:-3]
-			break
-		i += 1
-
-	data = json.loads(data)
-
-	return data
-
-def process_flows(model, flows):
+def process_flow(model, flow):
 	"""
-	Produces a set of predictions regarding the class of the flows.
+	Produces a prediction for the passed flow.
 
-	:param flows: (dict) -> the structure of the dictionary is identical to the one illustrated under
-							NE-AE Message Protocol above but instead of packets being a (222,) string
-							array (where each string is 222 characters long), it is now a (3, INPUT_DIM, INPUT_DIM)
-							binary torch tensor.
-							There must be 
+	:param flow: (dict) -> the structure of the flow is illustrated under NE-AE Message Protocol above but
+						   instead of packets being a (222,) string array (where each string is 222 characters long), 
+						   it is now a (3, INPUT_DIM, INPUT_DIM) binary torch tensor
 	
-	:return: (array(int)) -> the model inferences
+	:return: (array(int)) -> the model inference
 	"""
 
-	pckts = torch.stack([f["packets"] for f in flows], dim=0)
+	print("processing flow...")
+	print(flow)
+	quit()
+
+	pckts = flow["flow"]["packets"]
 	tag_scores = model(pckts).numpy()
-	inferences = [np.argmax(t_s) for t_s in tag_scores]
-	
-	return inferences
+	inference = np.argmax(tag_scores)
+
+	return inference
 
 def transmit_rules(inferences):
 	"""
@@ -168,46 +128,81 @@ def transmit_rules(inferences):
 	rules = []
 	tags_to_rules = {0: "Normal",
 				    1: "Infiltrating_Transfer", 
-				    2: "Bruteforce_SSH", 
-				    3: "DDoS",
-				    4: "HTTP_DDoS"
+				    2: "BruteForce",
 				    }
 
 	
-	pass
+
+
+def terminate_connection(s, conn=None, err=False):
+	
+	if err == True:
+		print("connection broken, shutting down...")
+	else:
+		print("terminating connection...")
+	
+	s.close()
+	if conn != None:
+		conn.close()
+
+	quit()
+
 
 def main():
 
-	print("client running...")
+	print("server running...")
+
+	# model, _, _ = utils.load_ckpt("models/model.pt")
+	# model.eval()
 
 	# create socket
 	print("creating socket...")
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	s = setup_listener(s)
 
-	# initiate connection
-	s = initiate_connection(s)
-
-	# process data
-	model, _, _ = utils.load_ckpt("models/model.pt")
-	model.eval()
 	while True:
-		data = get_data(s)
-		data = utils.preprocess_rt(data)
-		inferences = process_flows(model, data)
-		transmit_rules(inferences)
+
+		# block to establish connection with NE
+		conn, addr = s.accept()
+		with conn:
+			print(f"accepting connection to {addr}...")
+			get_meta = True
+			f = ""
+			flow = ""
+			recvd_size = 0
+			# enter metadata / flow processing cycle with NE 
+			while True:
+				# get metadata (size)
+				if get_meta == True:
+					print("getting metadata...")
+					size = conn.recv(1024)
+					if not size:
+						terminate_connection(s, conn, err=True)
+					# confirm metadata reception
+					s.sendall(b"0")
+					get_meta = False
+				else:
+					print("getting flow...")
+					# get flow
+					f = s.recv(1024)
+					if not f:
+						terminate_connection(s)
+					f = f.decode()
+					flow += f
+					if sys.getsizeof(flow) == size:
+						print(f"flow receieved: {flow}")
+						# confirm flow reception
+						s.sendall(b"1")
+						terminate_connection(s, conn)
+						flow = json.loads(flow)
+						inferences = process_flows(model, flow)
+						transmit_rules(inferences)
+						get_meta = True
+
 
 
 
 if __name__ == "__main__":
 	main()
-
-	
-
-
-
-
-
-
-
 
 
