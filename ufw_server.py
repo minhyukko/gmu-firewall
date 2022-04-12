@@ -25,16 +25,19 @@ while True:
     # now our endpoint knows about the OTHER endpoint.
     clientsocket, address = s.accept()
     print(f"Connection from {address} has been established.")
-    data = clientsocket.recv(1024)
-    if not data:
-        break
-    clientsocket.sendall(data)
-"""
+
     try:
         clientsocket.send(bytes("192.164.3.12","utf-8"))
     except clientsocket.error as err:
         print("Clientsocket send function failed. Trying to connect...")
-        clientsocket.connect((HOST, PORT))
+        #clientsocket.connect((HOST, PORT))
+        clientsocket.connect(server_address)
 
     clientsocket.close()
+
+"""
+    data = clientsocket.recv(1024)
+    if not data:
+        break
+    clientsocket.sendall(data)
 """
