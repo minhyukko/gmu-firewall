@@ -27,7 +27,7 @@ try:
     #s.connect((socket.gethostname(), 1492))
     #conn, add = s.connect((socket.gethostname(), 1492))
 except socket.error as err:
-    print("Socket creation failed %s" % (err))
+    print("the Socket creation failed %s" % (err))
 
 #s.bind((socket.gethostname(), 1492))
 #s.listen()
@@ -35,9 +35,11 @@ except socket.error as err:
 full_msg = ''
 while True:
     #s.connect((socket.gethostname(), 1492))
+    """
     message = ('192.168.13.14')
     encoded = message.encode('utf-8')
     s.sendall(encoded)
+    """
     msg = s.recv(1024)
     #msg = conn.recv(1024)
     print("Here: ")
@@ -63,4 +65,3 @@ while True:
     print(y["target"])
     # os.system(full_msg) #sudo ufw deny from 203.0.113.100
     os.system("lscpu") #sudo ufw deny from 203.0.113.100
-
