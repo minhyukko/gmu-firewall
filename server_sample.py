@@ -19,7 +19,7 @@ def main(argv):
     HOST = "127.0.0.1"
     PORT = 491
     
-    server_address = 'socket_fd/uds_socket'
+    server_address = 'socket_fd/ne_ae.fd'
     T_OUT= .00001
 
     # Make sure the socket does not already exist
