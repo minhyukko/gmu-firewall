@@ -55,8 +55,9 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         if self.arr[i1] == None:
             ### pkt cannot be used here, substituting this new flow creation for the passed flow
             self.arr[i1] = flow
-                          #FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
-            self.arr[i1].packets.append(pkt)#Add payload to FlowNode - Replace Payload Line
+            #FlowNode(pkt['IP'].src, pkt['TCP'].sport, pkt['IP'].dst, pkt['TCP'].dport, time.time())
+            #for i in range(len(flow.packets)):
+                #self.arr[i1].packets.append(flow.packets[i])#Add payload to FlowNode - Replace Payload Line
             self.count += 1
             return
         else:
