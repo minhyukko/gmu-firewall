@@ -74,7 +74,7 @@ def add_pkt(hm,a_frame,socket,server_address):
         #Create a new node if there is not a node for the src dst pair
         #The searching for whether or not a new flow is needed is handled in gen_flows (line 52)
         # create a new flow node to ostensibly
-        hm.add(pkt)
+        hm = hm.add(pkt)
 
         # if fin is true get key for pkt
         '''
