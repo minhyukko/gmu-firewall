@@ -15,8 +15,18 @@ import numpy
 from scapy.utils import rdpcap, wrpcap
 from scapy.layers.inet import IP, TCP, UDP
 from scapy import compat
-import time 
-
+import time
+import logging
+#def setup_logging(filename):
+#    try:
+#        with open(filename,'w')as f:
+#            f.write('Flows Log')
+#    except FileNotFoundError:
+#        print("The log directory doesn't exist")
+#    logging.basicConfig(filename = filename,
+#                       filemode = 'w', 
+#                       encoding = 'utf-8', 
+#                       format = "%(name)s - %(levelname)s - %(message)s")
 
 class FlowNode:#Linked List Node used within hashmap
     def __init__(self, source, src_port, destination, dst_port, t):# Attributes in Node correspond to FLow attributes from the XML
@@ -38,7 +48,7 @@ class FlowNode:#Linked List Node used within hashmap
 
 
 class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
-    def __init__(self, capacity, load_factor, timeout_time, socket):
+    def __init__(self, capacity, load_factor, timeout_time, socket, log_file):
         self.size = 0# Size of hashmap
         self.arr = [None] * capacity# Create array that i
         self.count = 0#Current Number of completed flows used for json naming
@@ -46,6 +56,10 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.load_factor = load_factor
         self.timeout_time =  timeout_time
         self.socket = socket
+        self.log_file = log_file
+        setup_logging(log_file)
+        print(log_file)
+        logging.debug("Logging Setup")
 
     def addf(self, key, flow):#Add new node to the hashmap
         ### pkt cannot be used here, substituting this new flow creation for the passed flow
@@ -82,7 +96,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         sport = pkt['TCP'].sport
         FIN = pkt['TCP'].flags.F
         b_pkt = pkt_to_bin(pkt)
-        print("Packet Add",self.count)
+        logging.info("Packet Add, count {}".format(self.count))
         key = hash(str(src) + str(sport)+ str(dst) + str(dport))
         key_inv = hash(str(dst) + str(dport)+ str(src) + str(sport))
         i1 = hash(key) % self.capacity
@@ -174,32 +188,28 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
             self.remove(key)
         
         if (self.count/self.capacity) > self.load_factor:
-            print(self.capacity)
             new_hash = self.rehash()
-            print(type(new_hash)) 
-            print(self.capacity)
         return new_hash
 
     def remove(self, key):#Removes a flow and saves the flow in json format
         ### A key is passed, no key is needed
-        print("Remove-----------------------------------------")
+        logging.info("Remove: {}".format(self.count))
         #key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
         temp = self.arr[i1]
         prev = temp
-        print(key, self.arr[i1].key)
         while True:
             print(temp.key)
             if temp.key == key:
                 prev.next = temp.next
-                print("Send Single Flow") 
+#                logging.info("Sending Flow to server {}".format(socket)) 
                 #Sends the messages to the Server in the order expected(-> size, <- confirmation, -> data)
                 d = {'packets':temp.packets, 'source':temp.source, 'destination':temp.destination}
                 data = json.dumps(d)
                 data = data.encode(encoding = 'UTF-8')
-                print(type(data))
+                #print(type(data))
                 data2 = sys.getsizeof(data)
-                print(data2)
+                #print(data2)
                 self.socket.sendall(bytes(str(data2),encoding = 'utf8'))
                 r = self.socket.recv(sys.getsizeof(int()))
                 self.socket.sendall(data)
@@ -208,7 +218,6 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 
                 return
             if(temp.next==None):
-                print('End')
                 break
             prev = temp
             temp = temp.next
@@ -216,7 +225,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
 
     def rehash(self):
         ###Should this instantiation be all the same filed as the current HashMap (except for capacity)?
-        new_hash  = HashMap(self.capacity * 2, self.load_factor, self.timeout_time, self.socket)
+        new_hash  = HashMap(self.capacity * 2, self.load_factor, self.timeout_time, self.socket,self.log_file)
         old_capacity = self.capacity        
         for x in self.arr:
             temp = x
@@ -227,8 +236,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 t2.next = None
                 new_hash.addf(temp.key,t2)
                 temp = temp.next
-        print("Rehash\n From: {} To:{} ".format(old_capacity, new_hash.capacity))
-        print(type(new_hash))
+        logging.info("Rehash\n From: {} To:{} ".format(old_capacity, new_hash.capacity))
         return new_hash
 
     def check_timeouts(self, t):
@@ -277,6 +285,12 @@ def pkt_to_bin(pkt):
     pkt_final = pkt_bin[2:]
     return pkt_final
 
+def setup_logging(filename):
+    logging.basicConfig(filename = filename, 
+                        filemode = 'w', 
+                        encoding = 'utf-8', 
+                        level = logging.DEBUG, 
+                        format = '%(name)s - %(levelname)s - %(message)s')
 
 #hm = HashMap(100, 0.75, 25) # Recommended initial settings 100 Initial Capacity, 0.75 load factor, and a 25 second timeout time
 
