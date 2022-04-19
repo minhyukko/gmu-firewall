@@ -10,13 +10,15 @@ import torchvision.models as models
 """
 Questions:
 - reliably measuring size of incoming data (sys.getsize() is overestimating)
+	- should we just use delimiters
 """
 
 """
 Networking Parameters.
 """
 HOST = "127.0.0.1"
-PORT = 4918
+PORT_NE = 4918
+PORT_FW = 4919
 
 """
 Model device.
@@ -96,12 +98,13 @@ ALG:
 
 """
 
-def setup_listener(s):
+def setup_listener():
 	
 
-	print(f"setting up listener on {HOST}, {PORT}...")
+	print(f"setting up listener on {HOST}, {PORT_NE}...")
+	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	s.bind((HOST, PORT))
+	s.bind((HOST, PORT_NE))
 	s.listen()
 
 	return s
@@ -128,7 +131,7 @@ def process_pckts(model, pckts):
 
 	return inference
 
-def transmit_rules(inferences):
+def transmit_rule(fw_socket, msg, inference):
 	"""
 	Transmit rules to the firewall according to model inferences.
 
@@ -137,17 +140,40 @@ def transmit_rules(inferences):
 	:return:
 	"""
 
-	rules = []
-	tags_to_rules = {0: "Normal",
-				    1: "Infiltrating_Transfer", 
-				    2: "BruteForce",
-				    }
+	# for now, firewall will always block source IP
+	rule = {
+				"action": "b",       # {b, p, d}
+				"target_type": "sip",  # {sip, sport}
+				"target": msg["sip"],  # {0-9}*
+				"protocol": "tcp",     # {tcp, udp}
+				"sip": None			   # IPv4 IP format
+			}
 
+	rule_preproc = json.dumps(rule).encode("utf-8")
+	rule_size = str(sys.getsizeof(rule_preproc)).encode("utf-8")
+
+	# send size of rule
+	print(f"sending size of rule: {rule_size}...")
+	fw_socket.sendall(rule_size)
 	
-
+# receive confirmation signal for metadata transmission / send flow
+	print("waiting for confirmation signal...")
+	conf = fw_socket.recv(1024)
+	if not conf:
+		terminate_connection(fw_socket, err=True)
+	if conf.decode() == "0":
+		print(f"confirmation receieved, sending rule:\n{rule}")
+		fw_socket.sendall(rule_preproc)
+		conf = fw_socket.recv(1024)
+		# receieve confirmation signal for flow transmission
+		if conf.decode() == "1":
+			print("confirmation receieved, rule transmitted successfully!")
 
 def terminate_connection(s, conn=None, err=False):
-	
+	"""
+	Terminates connection.
+	"""
+
 	if err == True:
 		print("connection broken, shutting down...")
 	else:
@@ -195,13 +221,18 @@ def main():
 	model.to(device)
 	model.eval()
 
-	# setup socket to listen for client connections
-	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	s = setup_listener(s)
-
+	# setup server socket to listen for NE connection
+	s = setup_listener()
 	# establish connection with NE (blocking call)
 	conn, addr = s.accept()
-	print(f"accepted connection to {addr}")
+	print(f"accepted connection to NE @ {addr}")
+
+	# setup client socket to connect with FW
+	print("creating socket for communication with firewall...")
+	fw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	fw_socket.connect((HOST, PORT_FW))
+	print("established connection with FW")
+
 	with conn:
 		msg_i = 0
 		while True:
@@ -232,7 +263,7 @@ def main():
 					m = conn.recv(1024)
 					# print(f"segment of message receieved:\n{m}")
 					if not m:
-						terminate_connection(s)
+						terminate_connection(s, conn, err=True)
 					m = m.decode()
 					msg += m
 					swoops += 1
@@ -246,6 +277,8 @@ def main():
 						# process message
 						inference = process_pckts(model, msg["packets"])
 						print(f"the packets were classified as {ix_to_tags[int(inference)]}")
+						# transmit rules to firewall
+						transmit_rule(fw_socket, msg, inference)
 						# confirm message reception
 						print("sending confirmation signal, onto the next message!")
 						conn.sendall(b"1")
