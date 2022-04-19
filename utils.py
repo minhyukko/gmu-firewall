@@ -20,56 +20,32 @@ DEV_DIR = os.path.join(DATA_DIR, "dev")
 MODEL_DIR = "model/"
 INPUT_DIM = 224
 
-def preprocess_rt(data):
+def preprocess_rt(pckts):
 	"""
-	Preprocesses data for input to the model during real-time execution.
-	It transforms each flow into a (3, INPUT_DIM, INPUT_DIM) binary torch tensor.
-	The passed dictionary will look like this:
-	{
-		"flows":[
-					{
-						"packets": (222,) array (str)
-						"sip": (str)         
-						"sport": (int)
-					}
-					.
-					.
-					.
-				]	
+	Preprocesses packets for input to the model during real-time execution.
+	It transforms the packet array from a string array with INPUT_DIM elements,
+	each with length INPUT_DIM into a (3, INPUT_DIM, INPUT_DIM) binary torch tensor.
 
-	}
+	:param pckts: (list(str)) -> the packet array
 
-	:param flows: (dict) -> the data
-
-	:return: (dict) -> the preprocessed data
+	:return: (torch.tensor(3, INPUT_DIM, INPUT_DIM)) -> the packets in the form of a binary torch tensor
 	"""
 
-	# normalize flows to (INPUT_DIM,) dimensions
-	flows = data["flows"]
-	for f in flows:
-		pckts = f["packets"]
-		
-		# truncate or bottom-pad packet array
-		if len(pckts) > INPUT_DIM:
-			pckts = pckts[0:INPUT_DIM]
-		else:
-			pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
+	# truncate or bottom-pad packet array
+	if len(pckts) > INPUT_DIM:
+		pckts = pckts[0:INPUT_DIM]
+	else:
+		pckts += ["0"*(INPUT_DIM)]*(INPUT_DIM - len(pckts))
 
-		# truncate or right-pad each packet
-		if len(pckts[0]) > INPUT_DIM:
-			pckts = [p[0:INPUT_DIM] for p in pckts]
-		else:
-			pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
+	# truncate or right-pad each packet
+	if len(pckts[0]) > INPUT_DIM:
+		pckts = [p[0:INPUT_DIM] for p in pckts]
+	else:
+		pckts = [p + ("0"*(INPUT_DIM - len(p))) for p in pckts]
 
-		pckts = numerize_packets(pckts)
-
-		# apply changes
-		f["packets"] = pckts
-
-	# apply changes
-	data["flows"] = flows
+	pckts = numerize_packets(pckts)
 	
-	return data
+	return pckts
 
 def numerize_packets(pckts):
 	"""
@@ -425,6 +401,17 @@ def load_ckpt(ckpt_fname, model=None, optimizer=None):
 	epoch = ckpt["epoch"]
 
 	return model, optimizer, epoch
+
+def create_ckpt(model, optimizer, epoch=0):
+	
+	# store model state
+	ckpt = {
+		"model_state_dict": model.state_dict(),
+		"optimizer_state_dict": optimizer.state_dict(),
+		"epoch": epoch + 1
+	}
+
+	return ckpt
 
 def compute_accuracy(inferences, ground_truth):
 	"""
