@@ -11,7 +11,7 @@ import torchvision.models as models
 """
 Questions:
 - reliably measuring size of incoming data (sys.getsize() is overestimating)
-	- should we just use delimiters
+    - should we just use delimiters
 """
 
 """
@@ -124,7 +124,7 @@ def process_pckts(model, pckts):
 
     # preprocess packets
     print("preprocessing to prepare packets for input to model...")
-    pckts = utils.preprocess_pckts(pckts)
+    pckts = utils.preprocess_rt(pckts)
     
     # perform inference
     print("performing inference...")
@@ -137,8 +137,8 @@ def process_pckts(model, pckts):
 
 
 def transmit_rule(fw_socket, msg, inference):
-	"""
-	Transmit rules to the firewall according to model inferences.
+    """
+    Transmit rules to the firewall according to model inferences.
 
 
     :param inferences: (array(int)) -> the model inferences
@@ -147,50 +147,49 @@ def transmit_rule(fw_socket, msg, inference):
     """
 
 
-	# for now, firewall will always block source IP
-	rule = {
-				"action": "b",       # {b, p, d}
-				"target_type": "sip",  # {sip, sport}
-				"target": msg["sip"],  # {0-9}*
-				"protocol": "tcp",     # {tcp, udp}
-				"sip": None			   # IPv4 IP format
-			}
+    # for now, firewall will always block source IP
+    rule = {
+                "action": "b",       # {b, p, d}
+                "target_type": "sip",  # {sip, sport}
+                "target": msg["sip"],  # {0-9}*
+                "protocol": "tcp",     # {tcp, udp}
+                "sip": None            # IPv4 IP format
+            }
 
-	rule_preproc = json.dumps(rule).encode("utf-8")
-	rule_size = str(sys.getsizeof(rule_preproc)).encode("utf-8")
+    rule_preproc = json.dumps(rule).encode("utf-8")
+    rule_size = str(sys.getsizeof(rule_preproc)).encode("utf-8")
 
-	# send size of rule
-	print(f"sending size of rule: {rule_size}...")
-	fw_socket.sendall(rule_size)
-	
+    # send size of rule
+    print(f"sending size of rule: {rule_size}...")
+    fw_socket.sendall(rule_size)
+    
 # receive confirmation signal for metadata transmission / send flow
-	print("waiting for confirmation signal...")
-	conf = fw_socket.recv(1024)
-	if not conf:
-		terminate_connection(fw_socket, err=True)
-	if conf.decode() == "0":
-		print(f"confirmation receieved, sending rule:\n{rule}")
-		fw_socket.sendall(rule_preproc)
-		conf = fw_socket.recv(1024)
-		# receieve confirmation signal for flow transmission
-		if conf.decode() == "1":
-			print("confirmation receieved, rule transmitted successfully!")
+    print("waiting for confirmation signal...")
+    conf = fw_socket.recv(1024)
+    if not conf:
+        terminate_connection(fw_socket, err=True)
+    if conf.decode() == "0":
+        print(f"confirmation receieved, sending rule:\n{rule}")
+        fw_socket.sendall(rule_preproc)
+        conf = fw_socket.recv(1024)
+        # receieve confirmation signal for flow transmission
+        if conf.decode() == "1":
+            print("confirmation receieved, rule transmitted successfully!")
 
 def terminate_connection(s, conn=None, err=False):
-	"""
-	Terminates connection.
-	"""
+    """
+    Terminates connection.
+    """
 
-	if err == True:
-		print("connection broken, shutting down...")
-	else:
-		print("terminating connection...")
-	
-	s.close()
-	if conn != None:
-		conn.close()
-
-    	quit()
+    if err == True:
+        print("connection broken, shutting down...")
+    else:
+        print("terminating connection...")
+    
+    s.close()
+    if conn != None:
+        conn.close()
+    quit()
 
 
 def display_message(msg):
@@ -213,7 +212,7 @@ def display_message(msg):
     # print(f"packets: {pckts}")
 
 def main():
-<<<<<<< HEAD
+
     # only here temporarily
     ix_to_tags = {  0: "Normal",
                     1: "Infiltrating_Transfer",
