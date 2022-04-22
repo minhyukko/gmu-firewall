@@ -11,6 +11,7 @@ import torchvision.models as models
 """
 Questions:
 - reliably measuring size of incoming data (sys.getsize() is overestimating)
+	- should we just use delimiters
 """
 
 """
@@ -19,6 +20,7 @@ Networking Parameters.
 HOST = "127.0.0.1"
 PORT = 4918
 server_address = 'socket_fd/ne_ae.fd'
+
 """
 Model device.
 """
@@ -97,6 +99,7 @@ ALG:
 
 """
 
+
 def setup_listener(s):
     
     try:
@@ -132,9 +135,10 @@ def process_pckts(model, pckts):
 
     return inference
 
-def transmit_rules(inferences):
-    """
-    Transmit rules to the firewall according to model inferences.
+
+def transmit_rule(fw_socket, msg, inference):
+	"""
+	Transmit rules to the firewall according to model inferences.
 
 
     :param inferences: (array(int)) -> the model inferences
@@ -142,27 +146,51 @@ def transmit_rules(inferences):
     :return:
     """
 
-    rules = []
-    tags_to_rules = {0: "Normal",
-                    1: "Infiltrating_Transfer", 
-                    2: "BruteForce",
-                    }
 
-    
+	# for now, firewall will always block source IP
+	rule = {
+				"action": "b",       # {b, p, d}
+				"target_type": "sip",  # {sip, sport}
+				"target": msg["sip"],  # {0-9}*
+				"protocol": "tcp",     # {tcp, udp}
+				"sip": None			   # IPv4 IP format
+			}
 
+	rule_preproc = json.dumps(rule).encode("utf-8")
+	rule_size = str(sys.getsizeof(rule_preproc)).encode("utf-8")
+
+	# send size of rule
+	print(f"sending size of rule: {rule_size}...")
+	fw_socket.sendall(rule_size)
+	
+# receive confirmation signal for metadata transmission / send flow
+	print("waiting for confirmation signal...")
+	conf = fw_socket.recv(1024)
+	if not conf:
+		terminate_connection(fw_socket, err=True)
+	if conf.decode() == "0":
+		print(f"confirmation receieved, sending rule:\n{rule}")
+		fw_socket.sendall(rule_preproc)
+		conf = fw_socket.recv(1024)
+		# receieve confirmation signal for flow transmission
+		if conf.decode() == "1":
+			print("confirmation receieved, rule transmitted successfully!")
 
 def terminate_connection(s, conn=None, err=False):
-    
-    if err == True:
-        print("connection broken, shutting down...")
-    else:
-        print("terminating connection...")
-    
-    s.close()
-    if conn != None:
-        conn.close()
+	"""
+	Terminates connection.
+	"""
 
-    quit()
+	if err == True:
+		print("connection broken, shutting down...")
+	else:
+		print("terminating connection...")
+	
+	s.close()
+	if conn != None:
+		conn.close()
+
+    	quit()
 
 
 def display_message(msg):
@@ -185,6 +213,7 @@ def display_message(msg):
     # print(f"packets: {pckts}")
 
 def main():
+<<<<<<< HEAD
     # only here temporarily
     ix_to_tags = {  0: "Normal",
                     1: "Infiltrating_Transfer",
@@ -255,6 +284,7 @@ def main():
                                 msg_i += 1
                                 # allow variable reset
                                 break
+
 
 if __name__ == "__main__":
     main()
