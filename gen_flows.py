@@ -204,7 +204,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 prev.next = temp.next
 #                logging.info("Sending Flow to server {}".format(socket)) 
                 #Sends the messages to the Server in the order expected(-> size, <- confirmation, -> data)
-                d = {'packets':temp.packets, 'source':temp.source, 'destination':temp.destination}
+                d = {'pkt':temp.packets, 'src':temp.source, 'dst':temp.destination, 'sport':temp.src_port, 'dport':temp.dst_port}
                 data = json.dumps(d)
                 data = data.encode(encoding = 'UTF-8')
                 #print(type(data))

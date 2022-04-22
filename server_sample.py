@@ -31,6 +31,7 @@ def main(argv):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         print("Starting up Socket".format(server_address))
         s.bind(server_address)
+        #The parameter to listen spcifies the number of unaccepted connections that the system will allow before refusing new connecitons. When empty it is something resoun
         s.listen(1)
         conn, addr= s.accept()
         with conn :
