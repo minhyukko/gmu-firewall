@@ -7,8 +7,13 @@ import socket
 import gen_flows as gf
 import logging
 import os
+import signal
 
 def main(argv):
+    #setup simple signal handler
+    signal.signal(signal.SIGINT, handler)
+
+
     #setup logging
     ne_log =  './logs/ne.log'
     setup_logging(ne_log)
@@ -62,6 +67,11 @@ def setup_socket(server_address):
         logging.error("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
     return s
+
+def handler(signum, frame):
+    logging.info("Closing the Network Engine")
+    logging.shutdown()
+    exit(1)
 
 def add_pkt(hm,socket,server_address):
     hm=hm

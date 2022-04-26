@@ -57,9 +57,9 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         self.timeout_time =  timeout_time
         self.socket = socket
         self.log_file = log_file
-        setup_logging(log_file)
-        print(log_file)
-        logging.debug("Logging Setup")
+        #setup_logging(log_file)
+        #print(log_file)
+        #logging.debug("Logging Setup")
 
     def addf(self, key, flow):#Add new node to the hashmap
         ### pkt cannot be used here, substituting this new flow creation for the passed flow
@@ -199,7 +199,6 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         temp = self.arr[i1]
         prev = temp
         while True:
-            print(temp.key)
             if temp.key == key:
                 prev.next = temp.next
 #                logging.info("Sending Flow to server {}".format(socket)) 
@@ -285,12 +284,6 @@ def pkt_to_bin(pkt):
     pkt_final = pkt_bin[2:]
     return pkt_final
 
-def setup_logging(filename):
-    logging.basicConfig(filename = filename, 
-                        filemode = 'w', 
-                        encoding = 'utf-8', 
-                        level = logging.DEBUG, 
-                        format = '%(name)s - %(levelname)s - %(message)s')
 
 #hm = HashMap(100, 0.75, 25) # Recommended initial settings 100 Initial Capacity, 0.75 load factor, and a 25 second timeout time
 
