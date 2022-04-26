@@ -235,123 +235,39 @@ def main():
         with conn:
             msg_i = 0
             while True:
-                get_meta = True
                 m = ""
                 msg = ""
-                recvd_size = 0
-                msg_size = 0
                 swoops = 0
                 # enter metadata / message processing cycle with NE 
                 while True:
-                    if swoops == 0:
-                        print(f"attempting to receieve message {msg_i}...")
-                        # get metadata (size)
-                        if get_meta == True:
-                            print("getting metadata...")
-                            msg_size = conn.recv(1024)
-                            print(f"metadata receieved: message size={msg_size}")
-                            if not msg_size:
-                                terminate_connection(s, conn, err=True)
-                            msg_size = int(str(msg_size, 'utf-8'))
-                            # confirm metadata reception
-                            print("send confirmation signal...")
-                            conn.sendall(b"0")
-                            get_meta = False
-                        else:
-                            print(f"swoop {swoops}...")
-                            # get message segment
-                            m = conn.recv(msg_size)
-                            # print(f"segment of message receieved:\n{m}")
-                            if not m:
-                                terminate_connection(s)
-                            m = m.decode()
-                            msg += m
-                            swoops += 1
-                            # full message recieved
-                            # if sys.getsizeof(msg) == msg_size:
-                            if msg[-1] == "}":
-                                print(f"complete message receieved!")
-                                # display message
-                                msg = json.loads(msg)
-                                display_message(msg)
-                                # process message
-                                inference = process_pckts(model, msg["pkt"])
-                                print(f"the packets were classified as {ix_to_tags[int(inference)]}")
-                                # confirm message reception
-                                print("sending confirmation signal, onto the next message!")
-                                conn.sendall(b"1")
-                                msg_i += 1
-                                # allow variable reset
-                                break
+                    if swoops == 0: print(f"attempting to receieve message {msg_i}...")
+                    print(f"swoop {swoops}...")
+                    # get message segment
+                    m = conn.recv(msg_size)
+                    # print(f"segment of message receieved:\n{m}")
+                    if not m:
+                        terminate_connection(s)
+                    m = m.decode()
+                    msg += m
+                    swoops += 1
+                    # full message recieved
+                    if msg[-1] == "}":
+                        print(f"complete message receieved!")
+                        # display message
+                        msg = json.loads(msg)
+                        display_message(msg)
+                        # process message
+                        inference = process_pckts(model, msg["pkt"])
+                        print(f"the packets were classified as {ix_to_tags[int(inference)]}")
+                        # confirm message reception
+                        print("sending confirmation signal, onto the next message!")
+                        conn.sendall(b"1")
+                        msg_i += 1
+                        # allow variable reset
+                        break
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# def AE(array):
-#     print("In AE")
-#     print("Data:{}".format(array))
-#     print("Type: ", type(array))
-
-
-#     #Min's Function Call
-#     return
-
-# def main(argv):
-    
-#     server_address = "socket_fd/ne_ae.fd"
-#     T_OUT= .00001
-
-#     # Make sure the socket does not already exist
-#     try:
-#         os.unlink(server_address)
-#     except OSError:
-#         if os.path.exists(server_address):
-#             raise
-
-#     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-#         print("Starting up Socket".format(server_address))
-#         s.bind(server_address)
-#         s.listen(1)
-#         conn, addr= s.accept()
-#         with conn :
-#             print(f"Connection From {addr}")
-#             while True: 
-#                 #get the size of the data to be transmitted and look for the terminating character < >
-#                 print("Receive Size...")
-#                 bytes_size = conn.recv(1024)
-#                 bytes_size = str(bytes_size, 'utf8')
-#                 bytes_size = int(bytes_size)
-#                 print("Received Size :{}".format(bytes_size))
-#                 print("Send Ready Message for Data")
-#                 conn.sendall(bytes(1))
-#                 print("Receiving Data")
-#                 data = conn.recv(bytes_size)
-#                 print(data) 
-#                 #data = np.frombuffer(data, dtype='S32')
-#                 print("Data\n{}".format(sys.getsizeof(data)))
-#                 #conn.sendall(bytes(1))
-#     return
-
-
-# if __name__ == "__main__":
-#     main(sys.argv[1:])
-
-
-
 
 
