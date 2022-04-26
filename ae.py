@@ -243,7 +243,7 @@ def main():
                     if swoops == 0: print(f"attempting to receieve message {msg_i}...")
                     print(f"swoop {swoops}...")
                     # get message segment
-                    m = conn.recv(msg_size)
+                    m = conn.recv(1024)
                     # print(f"segment of message receieved:\n{m}")
                     if not m:
                         terminate_connection(s)
@@ -252,6 +252,7 @@ def main():
                     swoops += 1
                     # full message recieved
                     if msg[-1] == "}":
+                        print(msg)
                         print(f"complete message receieved!")
                         # display message
                         msg = json.loads(msg)

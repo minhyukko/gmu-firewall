@@ -207,10 +207,10 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 data = json.dumps(d)
                 data = data.encode(encoding = 'UTF-8')
                 #print(type(data))
-                data2 = sys.getsizeof(data)
-                #print(data2)
-                self.socket.sendall(bytes(str(data2),encoding = 'utf8'))
-                r = self.socket.recv(sys.getsizeof(int()))
+                #data2 = sys.getsizeof(data)
+                #print(bytes(str(data2),encoding = 'utf8'))
+                #self.socket.sendall(bytes(str(data2),encoding = 'utf8'))
+                #r = self.socket.recv(sys.getsizeof(int()))
                 self.socket.sendall(data)
 
                 

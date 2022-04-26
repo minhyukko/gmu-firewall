@@ -40,7 +40,7 @@ def setup_logging(filename):
                         filemode = 'w',
                         encoding = 'utf-8', 
                         level= logging.DEBUG,
-                        format='%(name)s - %(levelname)s - %(message)s')
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def setup_socket(server_address):
     '''
@@ -62,6 +62,7 @@ def setup_socket(server_address):
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         logging.info('Connecting to {}'.format(server_address))
+        print('connected')
         s.connect(server_address)
     except socket.error as err:
         logging.error("Socket creation has failed with error %s"%(err)) 
