@@ -9,9 +9,9 @@ import torch.nn as nn
 import torchvision.models as models
 
 """
-Questions:
-- reliably measuring size of incoming data (sys.getsize() is overestimating)
-    - should we just use delimiters
+TODO:
+    - upload model.pt to Github
+    - set ckpt_fname
 """
 
 """
@@ -105,7 +105,7 @@ def setup_listener(s):
     try:
         os.unlink(server_address)
     except OSError:
-        if os.path.exsists(server_address):
+        if os.path.exists(server_address):
             raise
     print(f"setting up listener on {HOST}, {PORT}...")
     s.bind(server_address)
@@ -163,7 +163,7 @@ def transmit_rule(fw_socket, msg, inference):
     print(f"sending size of rule: {rule_size}...")
     fw_socket.sendall(rule_size)
     
-# receive confirmation signal for metadata transmission / send flow
+	# receive confirmation signal for metadata transmission / send flow
     print("waiting for confirmation signal...")
     conf = fw_socket.recv(1024)
     if not conf:
@@ -221,11 +221,16 @@ def main():
     print("server running...")
 
     print("setting up model...")
-    num_classes = 3
-    model = models.densenet121(pretrained=True)
-    model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.ReLU(), nn.Softmax(dim=1))
+    model, _, _ = load_ckpt(ckpt_fname, model=None, optimizer=None):
     model.to(device)
     model.eval()
+
+    # num_classes = 3
+    # model = models.densenet121(pretrained=True)
+    # model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.ReLU(), nn.Softmax(dim=1))
+    # model.to(device)
+    # model.eval()
+    delim = "}"
     #setup socket to listen for client connections
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         setup_listener(s)
@@ -234,11 +239,12 @@ def main():
         print(f"accepted connection to {addr}")
         with conn:
             msg_i = 0
+            m_nxt = ""
             while True:
                 m = ""
-                msg = ""
+                msg = m_nxt
                 swoops = 0
-                # enter metadata / message processing cycle with NE 
+                # enter message processing cycle with NE 
                 while True:
                     if swoops == 0: print(f"attempting to receieve message {msg_i}...")
                     print(f"swoop {swoops}...")
@@ -248,24 +254,30 @@ def main():
                     if not m:
                         terminate_connection(s)
                     m = m.decode()
-                    msg += m
+                    m_curr = m
+                    # full message receieved
+                    if delim in m:
+                    	print(f"complete message receieved!")
+                    	delim_idx = m.find("}")
+                    	# m may include parts of the next message
+                    	m_curr = m[:delim_idx+1]
+                    	m_nxt = ""
+                    	if delim_idx < len(m) - 1:
+                    		m_nxt = m[delim_idx+1:]
+                    	msg += m_curr
+                    	msg = json.loads(msg)
+                    	display_message(msg)
+                    	# perform inference
+                    	inference = process_pckts(model, msg["pkt"])
+                    	print(f"the packets were classified as {ix_to_tags[int(inference)]}")
+                    	# confirm message reception
+                    	print("sending confirmation signal, onto the next message!")
+                    	conn.sendall(b"1")
+                    	msg_i += 1
+                    	# allow variable reset
+                    	break
+                    msg += m_curr
                     swoops += 1
-                    # full message recieved
-                    if msg[-1] == "}":
-                        print(msg)
-                        print(f"complete message receieved!")
-                        # display message
-                        msg = json.loads(msg)
-                        display_message(msg)
-                        # process message
-                        inference = process_pckts(model, msg["pkt"])
-                        print(f"the packets were classified as {ix_to_tags[int(inference)]}")
-                        # confirm message reception
-                        print("sending confirmation signal, onto the next message!")
-                        conn.sendall(b"1")
-                        msg_i += 1
-                        # allow variable reset
-                        break
 
 
 if __name__ == "__main__":
