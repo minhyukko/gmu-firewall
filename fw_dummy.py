@@ -100,55 +100,45 @@ def main():
    
     s = setup_listener()
     # establish connection with AE (blocking call)
+    delim = "}"
     conn, addr = s.accept()
     log("accepted connection to AE @ " + str(addr), do_print=True)
     with conn:
         msg_i = 0
+        m_nxt = ""
         while True:
             get_meta = True
             m = ""
-            msg = ""
-            recvd_size = 0
-            msg_size = 0
+            msg = m_nxt
             swoops = 0
             # enter metadata / message processing cycle with NE 
             while True:
-                if swoops == 0:
-                    log("attempting to receieve message " + str(msg_i) + "...", do_print=True)
-                # get metadata (size)
-                if get_meta == True:
-                    log("getting metadata...", do_print=True)
-                    msg_size = conn.recv(1024)
-                    logging.info("metadata receieved: message size={msg_size}")
-                    if not msg_size:
-                        terminate_connection(s, conn, err=True)
-                    # confirm metadata reception
-                    logging.info("send confirmation signal...")
-                    conn.sendall(b"0")
-                    get_meta = False
-                else:
-                    logging.info("swoop {swoops}...")
-                    # get message segment
-                    m = conn.recv(1024)
-                    # logging.info("segment of message receieved:\n{m}")
-                    if not m:
-                        terminate_connection(s, conn, err=True)
-                    m = m.decode()
-                    msg += m
-                    swoops += 1
-                    if msg[-1] == "}":
-                        logging.info("complete message receieved!")
-                        # display message
-                        msg = json.loads(msg)
-                        logging.info(msg)
-                        # implement the rule encoded in the message
-                        implement_rule(msg)
-                        # confirm message reception
-                        logging.info("sending confirmation signal, onto the next message!")
-                        conn.sendall(b"1")
-                        msg_i += 1
-                        # allow variable reset
-                        break
+                if swoops == 0: log("attempting to receieve message " + str(msg_i) + "...", do_print=True)
+                log("swoop " + str(swoops) + "...", do_print=True); swoops += 1
+                # get message segment
+                m = conn.recv(1024)
+                # logging.info("segment of message receieved:\n{m}")
+                if not m:
+                    terminate_connection(s, conn, err=True)
+                m = m.decode()
+                m_curr = m
+                # full message receieved
+                if delim in m:
+                    log("complete message received!", do_print=True)
+                    delim_idx = m.find(delim)
+                    # m may include parts of the next message
+                    m_curr = m[:delim_idx+1]
+                    m_nxt = ""
+                    if delim_idx < len(m) - 1:
+                        m_nxt = m[delim_idx+1:]
+                    msg += m_curr
+                    msg = json.loads(msg)
+                    implement_rule(msg)
+                    log("sending confirmation signal, onto the next message!", do_print=True)
+                    conn.sendall(b"1")
+                    msg_i += 1
+                    break
+                msg += m_curr
 
 if __name__ == "__main__":
     main()
