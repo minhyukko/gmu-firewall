@@ -40,11 +40,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 """
 NE-AE Message Protocol:
-
 message_length: n
-
 {
-
     "flow":
             {
                 "packets": (222,) array (str)
@@ -53,17 +50,13 @@ message_length: n
                 "sip": (str)      
                 "sport": (int)
             }   
-
 }
-
 AE-FW Message Protocol:
-
 {
     "meta": {
                 message_length: (int)    # bytes
                 rule_lengths: tuple(int) # bytes
             }
-
     "rule_set": [
                     {
                         "action": (str),       # {b, p, d}
@@ -77,7 +70,6 @@ AE-FW Message Protocol:
                     .
                 ]
 }
-
 ALG:
     Let server_sock be the server socket and ne_sock and model_sock be ephemeral sockets communicating with the NE and the model, respectively
     Let buf be the server-side buffer, buf_limit be the maximum number of data to be stored in buf at once
@@ -96,7 +88,6 @@ ALG:
                 transmit the flow through model_sock
             else:
                 store the flow in buf
-
 """
 
 
@@ -118,11 +109,11 @@ def setup_socket(server_address):
     #create the connection to the socket
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        logging.info('Connecting to {}'.format(server_address))
+        print('Connecting to {}'.format(server_address))
         print('connected')
         s.connect(server_address)
     except socket.error as err:
-        logging.error("Socket creation has failed with error %s"%(err)) 
+        print("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
     return s
 
@@ -152,10 +143,7 @@ def process_pckts(model, pckts):
 def transmit_rule(fw_socket, msg, inference):
     """
     Transmit rules to the firewall according to model inferences.
-
-
     :param inferences: (array(int)) -> the model inferences
-
     :return:
     """
 
@@ -233,7 +221,7 @@ def main():
     model.eval()
 
     # set up firewall socket
-    fw_sock = setup_socket("socket_fd/ne_ae.fd")
+    fw_sock = setup_socket("socket_fd/ae_fe.fd")
 	
     delim = "}"
     # setup socket to listen for client connections
@@ -279,7 +267,7 @@ def main():
                     	print("sending confirmation signal, onto the next message!")
                     	conn.sendall(b"1")
 			# transmit rule
-			transmit_rule(fw_sock, msg, inference)
+                    	transmit_rule(fw_sock, msg, inference)
                     	msg_i += 1
                     	# allow variable reset
                     	break
@@ -290,5 +278,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
