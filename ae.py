@@ -247,7 +247,7 @@ def main():
                 # enter message processing cycle with NE 
                 while True:
                     if swoops == 0: print(f"attempting to receieve message {msg_i}...")
-                    print(f"swoop {swoops}...")
+                    print(f"swoop {swoops}..."); swoops += 1
                     # get message segment
                     m = conn.recv(1024)
                     # print(f"segment of message receieved:\n{m}")
