@@ -111,7 +111,20 @@ def setup_listener(s):
     s.bind(server_address)
     s.listen(1)
 
-    return 
+    return s
+
+def setup_socket(server_address):
+
+    #create the connection to the socket
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        logging.info('Connecting to {}'.format(server_address))
+        print('connected')
+        s.connect(server_address)
+    except socket.error as err:
+        logging.error("Socket creation has failed with error %s"%(err)) 
+        sys.exit(1)
+    return s
 
 def process_pckts(model, pckts):
     """
@@ -157,24 +170,11 @@ def transmit_rule(fw_socket, msg, inference):
             }
 
     rule_preproc = json.dumps(rule).encode("utf-8")
-    rule_size = str(sys.getsizeof(rule_preproc)).encode("utf-8")
-
-    # send size of rule
-    print(f"sending size of rule: {rule_size}...")
-    fw_socket.sendall(rule_size)
-    
-	# receive confirmation signal for metadata transmission / send flow
-    print("waiting for confirmation signal...")
+    fw_socket.sendall(rule_preproc)
     conf = fw_socket.recv(1024)
-    if not conf:
-        terminate_connection(fw_socket, err=True)
-    if conf.decode() == "0":
-        print(f"confirmation receieved, sending rule:\n{rule}")
-        fw_socket.sendall(rule_preproc)
-        conf = fw_socket.recv(1024)
-        # receieve confirmation signal for flow transmission
-        if conf.decode() == "1":
-            print("confirmation receieved, rule transmitted successfully!")
+    # receieve confirmation signal for flow transmission
+    if conf.decode() == "1":
+        print("confirmation receieved, rule transmitted successfully!")
 
 def terminate_connection(s, conn=None, err=False):
     """
@@ -220,22 +220,27 @@ def main():
 
     print("server running...")
 
+    # set up model
     print("setting up model...")
-    model, _, _ = load_ckpt(ckpt_fname, model=None, optimizer=None):
+    # model, _, _ = load_ckpt(ckpt_fname, model=None, optimizer=None):
+    # model.to(device)
+    # model.eval()
+
+    num_classes = 3
+    model = models.densenet121(pretrained=True)
+    model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.ReLU(), nn.Softmax(dim=1))
     model.to(device)
     model.eval()
 
-    # num_classes = 3
-    # model = models.densenet121(pretrained=True)
-    # model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.ReLU(), nn.Softmax(dim=1))
-    # model.to(device)
-    # model.eval()
+    # set up firewall socket
+    fw_sock = setup_socket("socket_fd/ne_ae.fd")
+	
     delim = "}"
-    #setup socket to listen for client connections
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        setup_listener(s)
+    # setup socket to listen for client connections
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as ne_sock:
+        setup_listener(ne_sock)
         # establish connection with NE (blocking call)
-        conn, addr = s.accept()
+        conn, addr = ne_sock.accept()
         print(f"accepted connection to {addr}")
         with conn:
             msg_i = 0
@@ -273,10 +278,14 @@ def main():
                     	# confirm message reception
                     	print("sending confirmation signal, onto the next message!")
                     	conn.sendall(b"1")
+			# transmit rule
+			transmit_rule(fw_sock, msg, inference)
                     	msg_i += 1
                     	# allow variable reset
                     	break
                     msg += m_curr
+    
+    fw_sock.close()
 
 
 if __name__ == "__main__":
