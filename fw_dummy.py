@@ -14,10 +14,10 @@ def check_ip(Ip):
     Ensures the passed IP address is valid.
     """
     if(re.search(regex, Ip)):
-        logging.info("Valid Ip address")
+        log("Valid Ip address")
         return True     
     else:
-        logging.info("Invalid Ip address")
+        log("Invalid Ip address")
         return False
 
     pass
@@ -28,9 +28,9 @@ def terminate_connection(s, conn=None, err=False):
     """
 
     if err == True:
-        logging.info("connection broken, shutting down...")
+        log("connection broken, shutting down...", do_print=True)
     else:
-        logging.info("terminating connection...")
+        log("terminating connection...", do_print=True)
     
     s.close()
     if conn != None:
@@ -50,10 +50,8 @@ def setup_listener():
         if os.path.exists(server_address):
             raise
 
-    logging.info("setting up listener on {HOST}, {PORT}...")
+    log("setting up listener on " + str(HOST) + ", " + str(PORT) + "...", do_print=True)
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    #s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #s.bind((HOST, PORT))
     s.bind(server_address)
     s.listen()
 
@@ -66,13 +64,11 @@ def implement_rule(msg):
     msg = {'action': 'b', ...}
     """
 
-    logging.info("implementing rule...")
-    logging.info(msg["target"])
+    log("implementing rule...", do_print=True)
+    log(msg["target"])
     if check_ip(msg["target"]):
-    	logging.info("sudo ufw deny from " + msg["target"])
+    	log("sudo ufw deny from " + msg["target"], do_print=True)
     	os.system("sudo ufw deny from " + msg["target"])
-
-    pass
     
 def setup_logging(filename):
     logging.basicConfig(filename = filename,
@@ -85,6 +81,11 @@ def handler(signum, frame):
     logging.info("Closing the Network Engine")
     logging.shutdown()
     exit(1)
+
+def log(info, do_print=False):
+    logging.info(info)
+    if do_print == True:
+        print(info)
 
 def main():
 
@@ -100,8 +101,7 @@ def main():
     s = setup_listener()
     # establish connection with AE (blocking call)
     conn, addr = s.accept()
-    #logging.info("accepted connection to AE @ {addr}")
-    logging.info("accepted connection to AE @ {addr}")
+    log("accepted connection to AE @ " + str(addr), do_print=True)
     with conn:
         msg_i = 0
         while True:
@@ -114,11 +114,10 @@ def main():
             # enter metadata / message processing cycle with NE 
             while True:
                 if swoops == 0:
-                    #logging.info("attempting to receieve message {msg_i}...")
-                    logging.info("attempting to receieve message {msg_i}...")
+                    log("attempting to receieve message " + str(msg_i) + "...", do_print=True)
                 # get metadata (size)
                 if get_meta == True:
-                    logging.info("getting metadata...")
+                    log("getting metadata...", do_print=True)
                     msg_size = conn.recv(1024)
                     logging.info("metadata receieved: message size={msg_size}")
                     if not msg_size:
@@ -137,8 +136,6 @@ def main():
                     m = m.decode()
                     msg += m
                     swoops += 1
-                    # full message recieved
-                    # if sys.getsizeof(msg) == msg_size:
                     if msg[-1] == "}":
                         logging.info("complete message receieved!")
                         # display message
