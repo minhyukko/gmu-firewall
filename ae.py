@@ -277,7 +277,6 @@ def main():
                     	# allow variable reset
                     	break
                     msg += m_curr
-                    swoops += 1
 
 
 if __name__ == "__main__":
