@@ -17,9 +17,8 @@ TODO:
 """
 Networking Parameters.
 """
-HOST = "127.0.0.1"
-PORT = 4918
-server_address = 'socket_fd/ne_ae.fd'
+ne_address = "socket_fd/ne_ae.fd"
+fe_address = "socket_fd/ae_fe.fd"
 
 """
 Model device.
@@ -94,27 +93,26 @@ ALG:
 def setup_listener(s):
     
     try:
-        os.unlink(server_address)
+        os.unlink(ne_address)
     except OSError:
-        if os.path.exists(server_address):
+        if os.path.exists(ne_address):
             raise
-    print(f"setting up listener on {HOST}, {PORT}...")
-    s.bind(server_address)
+    
+    print(f"setting up listener on " + ne_address)
+    s.bind(ne_address)
     s.listen(1)
 
-    return s
+def setup_socket():
 
-def setup_socket(server_address):
-
-    #create the connection to the socket
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        print('Connecting to {}'.format(server_address))
+        print('Connecting to {}'.format(fe_address))
         print('connected')
-        s.connect(server_address)
+        s.connect(fe_address)
     except socket.error as err:
         print("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
+    
     return s
 
 def process_pckts(model, pckts):
@@ -221,7 +219,7 @@ def main():
     model.eval()
 
     # set up firewall socket
-    fw_sock = setup_socket("socket_fd/ae_fe.fd")
+    fe_sock = setup_socket(server_address)
 	
     delim = "}"
     # setup socket to listen for client connections
@@ -267,7 +265,7 @@ def main():
                     	print("sending confirmation signal, onto the next message!")
                     	conn.sendall(b"1")
 			# transmit rule
-                    	transmit_rule(fw_sock, msg, inference)
+                    	transmit_rule(fe_sock, msg, inference)
                     	msg_i += 1
                     	# allow variable reset
                     	break
