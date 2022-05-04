@@ -380,27 +380,29 @@ def save_ckpt(ckpt, is_best):
 		best_fpath = os.path.join(MODEL_DIR, "model.pt")
 		shutil.copyfile(ckpt_fpath, best_fpath)
 
-def load_ckpt(ckpt_fname, model=None, optimizer=None):
-	"""
-	Loads checkpoint.
+def load_ckpt(ckpt_fname, model=None, optimizer=None, device=None):
+    """
+    Loads checkpoint.
 
-	:param ckpt_fname: (str) -> the checkpoint filename
-	:param model: (torch.nn) -> the neural network
-	:param optimizer: (torch.optim) -> the optimizer
+    :param ckpt_fname: (str) -> the checkpoint filename
+    :param model: (torch.nn) -> the neural network
+    :param optimizer: (torch.optim) -> the optimizer
 
-	:return: None
-	"""
+    :return: None
+    """
 
-	ckpt_fpath = os.path.join(MODEL_DIR, ckpt_fname)
-	ckpt = torch.load(ckpt_fpath)
-	if model != None:
-		model.load_state_dict(ckpt["model_state_dict"], strict=False)
-	if optimizer != None:
-		optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    ckpt_fpath = os.path.join(MODEL_DIR, ckpt_fname)
+    if device == "cpu":
+        ckpt = torch.load(ckpt_fpath, map_location=torch.device("cpu"))
+    else:
+        ckpt = torch.load(ckpt_fpath)
+
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 	
-	epoch = ckpt["epoch"]
+    epoch = ckpt["epoch"]
 
-	return model, optimizer, epoch
+    return model, optimizer, epoch
 
 def create_ckpt(model, optimizer, epoch=0):
 	

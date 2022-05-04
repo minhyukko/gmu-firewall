@@ -116,7 +116,7 @@ def main():
                     m = conn.recv(1024)
                     # logging.info("segment of message receieved:\n{m}")
                     if not m:
-                        terminate_connection(s, conn, err=True)
+                        terminate_connection(ae_sock, conn, err=True)
                     m = m.decode()
                     m_curr = m
                     # full message receieved

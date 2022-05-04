@@ -6,6 +6,7 @@ import sys
 import utils
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torchvision.models as models
 
 """
@@ -102,13 +103,13 @@ def setup_listener(s):
     s.bind(ne_address)
     s.listen(1)
 
-def setup_socket():
+def setup_socket(socket_address):
 
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        print('Connecting to {}'.format(fe_address))
-        print('connected')
-        s.connect(fe_address)
+        print(f"Connectig to {socket_address}...")
+        s.connect(socket_address)
+        print("connection established")
     except socket.error as err:
         print("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
@@ -145,14 +146,13 @@ def transmit_rule(fw_socket, msg, inference):
     :return:
     """
 
-
     # for now, firewall will always block source IP
     rule = {
                 "action": "b",       # {b, p, d}
-                "target_type": "sip",  # {sip, sport}
-                "target": msg["sip"],  # {0-9}*
+                "target_type": "src",  # {sip, sport}
+                "target": msg["src"],  # {0-9}*
                 "protocol": "tcp",     # {tcp, udp}
-                "sip": None            # IPv4 IP format
+                "src": None            # IPv4 IP format
             }
 
     rule_preproc = json.dumps(rule).encode("utf-8")
@@ -208,18 +208,16 @@ def main():
 
     # set up model
     print("setting up model...")
-    # model, _, _ = load_ckpt(ckpt_fname, model=None, optimizer=None):
-    # model.to(device)
-    # model.eval()
-
     num_classes = 3
     model = models.densenet121(pretrained=True)
     model.classifier = nn.Sequential(nn.Linear(in_features=1024, out_features=num_classes), nn.ReLU(), nn.Softmax(dim=1))
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    model, _, _ = utils.load_ckpt("model.pt", model=model, optimizer=optimizer, device="cpu")
     model.to(device)
     model.eval()
 
     # set up firewall socket
-    fe_sock = setup_socket(server_address)
+    fe_sock = setup_socket(fe_address)
 	
     delim = "}"
     # setup socket to listen for client connections
@@ -243,7 +241,7 @@ def main():
                     m = conn.recv(1024)
                     # print(f"segment of message receieved:\n{m}")
                     if not m:
-                        terminate_connection(s)
+                        terminate_connection(ne_sock, conn, err=True)
                     m = m.decode()
                     m_curr = m
                     # full message receieved

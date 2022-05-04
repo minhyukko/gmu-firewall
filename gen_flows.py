@@ -212,6 +212,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                 #self.socket.sendall(bytes(str(data2),encoding = 'utf8'))
                 #r = self.socket.recv(sys.getsizeof(int()))
                 self.socket.sendall(data)
+                self.socket.recv(1)
 
                 
                 
