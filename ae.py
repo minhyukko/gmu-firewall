@@ -1,9 +1,9 @@
 import socket
 import os
 import json
-import selectors
 import sys
 import utils
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -40,7 +40,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 """
 NE-AE Message Protocol:
-message_length: n
 {
     "flow":
             {
@@ -51,13 +50,10 @@ message_length: n
                 "sport": (int)
             }   
 }
+
 AE-FW Message Protocol:
 {
-    "meta": {
-                message_length: (int)    # bytes
-                rule_lengths: tuple(int) # bytes
-            }
-    "rule_set": [
+    "rule":
                     {
                         "action": (str),       # {b, p, d}
                         "target_type": (str),  # {sip, sport}
@@ -65,56 +61,49 @@ AE-FW Message Protocol:
                         "protocol": (str),     # {tcp, udp}
                         "sip": None            # IPv4 IP format
                     }
-                    .
-                    .
-                    .
-                ]
 }
-ALG:
-    Let server_sock be the server socket and ne_sock and model_sock be ephemeral sockets communicating with the NE and the model, respectively
-    Let buf be the server-side buffer, buf_limit be the maximum number of data to be stored in buf at once
-    Create server_sock
-    Establish connection with ne through ne_sock
-    Repeatedly:
-        if len(buf) > buf_limit:
-            for i in range(len(buf) - buf_limit)
-                flow = buf[i]
-                transmit flow through model_sock # model will store these in its own buffer, if needed
-        else:
-            reconstruct a network flow from d being transmitted through ne_sock
-                - recv loop to read in header
-                - recv loop to read in network flow
-            if model_sock.ready == True: # in more detail: if len(model_buf) < buf_limit or model is not busy
-                transmit the flow through model_sock
-            else:
-                store the flow in buf
 """
 
+def setup_logging(filename):
 
-def setup_listener(s):
+    logging.basicConfig(filename = filename,
+                        filemode = 'w',
+                        encoding = 'utf-8', 
+                        level= logging.DEBUG,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+
+def handler(signum, frame):
+    logging.info("Closing the Network Engine")
+    logging.shutdown()
+    exit(1)
+
+
+def setup_listener(s, socket_address):
     
     try:
-        os.unlink(ne_address)
+        os.unlink(socket_address)
     except OSError:
-        if os.path.exists(ne_address):
+        if os.path.exists(socket_address):
             raise
     
-    print(f"setting up listener on " + ne_address)
-    s.bind(ne_address)
+    logging.info("setting up listener on %s ...", socket_address)
+    print(f"setting up listener on {socket_address} + ...")
+    s.bind(socket_address)
     s.listen(1)
-
-    #control_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    #socket.sendto('2', 'socket_fd/control.fd')
 
 def setup_socket(socket_address):
 
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        print(f"Connectig to {socket_address}...")
+        logging.info("connecting to %s ...", socket_address)
+        print(f"Connectig to {socket_address} ...")
         s.connect(socket_address)
-        print("connection established")
+        logging.info("connection established")
+        print("connection established!")
     except socket.error as err:
-        print("Socket creation has failed with error %s"%(err)) 
+        logging.error("socket creation has failed with error %s", err)
+        print(f"Socket creation has failed with error {err}") 
         sys.exit(1)
 
     control_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -129,13 +118,16 @@ def process_pckts(model, pckts):
     :return: (array(int)) -> the model inference
     """
 
+    logging.info("processing packets...")
     print("processing packets...")
 
     # preprocess packets
+    logging.info("preprocessing to prepare packets for input to model...")
     print("preprocessing to prepare packets for input to model...")
     pckts = utils.preprocess_rt(pckts)
     
     # perform inference
+    logging.info("performing inference...")
     print("performing inference...")
     with torch.no_grad():
         pckts = pckts.to(device)
@@ -152,6 +144,9 @@ def transmit_rule(fw_socket, msg, inference):
     :return:
     """
 
+    logging.info("transmitting rule...")
+    print("transmitting rule...")
+    
     # for now, firewall will always block source IP
     rule = {
                 "action": "b",       # {b, p, d}
@@ -166,6 +161,7 @@ def transmit_rule(fw_socket, msg, inference):
     conf = fw_socket.recv(1024)
     # receieve confirmation signal for flow transmission
     if conf.decode() == "1":
+        logging.info("confirmation receieved, rule transmitted successfully!")
         print("confirmation receieved, rule transmitted successfully!")
 
 def terminate_connection(s, conn=None, err=False):
@@ -174,14 +170,16 @@ def terminate_connection(s, conn=None, err=False):
     """
 
     if err == True:
+        logging.info("connection broken, shutting down...")
         print("connection broken, shutting down...")
     else:
+        logging.info("terminating connection...")
         print("terminating connection...")
     
     s.close()
     if conn != None:
         conn.close()
-    quit()
+    sys.exit(1)
 
 
 def display_message(msg):
@@ -194,25 +192,47 @@ def display_message(msg):
     dip = msg["dst"]
     sport = msg["sport"]
     dport = msg["dport"]
+    
+    logging.info("Network Engine Message:")
     print("Network Engine Message:")
+    
+    logging.info("IP data:")
     print("IP data:")
+
+    logging.info("    source ip: %s", sip)
     print(f"    source ip: {sip}")
+
+    logging.info("    dest ip: %s", dip)
     print(f"    dest ip: {dip}")
+
+    logging.info("Port data:")
     print(f"Port data:")
+
+    logging.info("    source port: %d", sport)
     print(f"    source port: {sport}")
+
+    logging.info("    dest port: %d", dport)
     print(f"    dest port: {dport}")
-    # print(f"packets: {pckts}")
 
 def main():
 
-    # only here temporarily
+    # SIGINT signal handler saves log files before termination 
+    signal.signal(signal.SIGINT, handler)
+
+    # setup logging
+    ae_log = "./logs/ae.log"
+    setup_logging(ae_log)
+
+    # for logging purposes
     ix_to_tags = {  0: "Normal",
                     1: "Infiltrating_Transfer",
                     2: "BruteForce"}
 
+    logging.info("server running...")
     print("server running...")
 
     # set up model
+    logging.info("setting up model...")
     print("setting up model...")
     num_classes = 3
     model = models.densenet121(pretrained=True)
@@ -228,7 +248,7 @@ def main():
     delim = "}"
     # setup socket to listen for client connections
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as ne_sock:
-        setup_listener(ne_sock)
+        setup_listener(ne_sock, ne_address)
         # establish connection with NE (blocking call)
         conn, addr = ne_sock.accept()
         print(f"accepted connection to {addr}")
@@ -241,18 +261,23 @@ def main():
                 swoops = 0
                 # enter message processing cycle with NE 
                 while True:
-                    if swoops == 0: print(f"attempting to receieve message {msg_i}...")
-                    print(f"swoop {swoops}..."); swoops += 1
+                    if swoops == 0:
+                        logging.info("attempting to receieve message %d", msg_i) 
+                        print(f"attempting to receieve message {msg_i}...")
+                        logging.info("swoop %d", swoops)
+                        print(f"swoop {swoops}...")
+                        swoops += 1
+
                     # get message segment
                     m = conn.recv(1024)
-                    # print(f"segment of message receieved:\n{m}")
                     if not m:
                         terminate_connection(ne_sock, conn, err=True)
                     m = m.decode()
                     m_curr = m
                     # full message receieved
                     if delim in m:
-                    	print(f"complete message receieved!")
+                        logging.info("complete message receieved!")
+                    	print("complete message receieved!")
                     	delim_idx = m.find("}")
                     	# m may include parts of the next message
                     	m_curr = m[:delim_idx+1]
@@ -264,11 +289,13 @@ def main():
                     	display_message(msg)
                     	# perform inference
                     	inference = process_pckts(model, msg["pkt"])
+                        logging.info("the packets were classified as %s", ix_to_tags[int(inference)])
                     	print(f"the packets were classified as {ix_to_tags[int(inference)]}")
                     	# confirm message reception
+                        logging.info("sending confirmation signal, onto the next message!")
                     	print("sending confirmation signal, onto the next message!")
                     	conn.sendall(b"1")
-			# transmit rule
+                        # transmit rule
                     	transmit_rule(fe_sock, msg, inference)
                     	msg_i += 1
                     	# allow variable reset
