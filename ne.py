@@ -67,6 +67,7 @@ def setup_socket(server_address):
     except socket.error as err:
         logging.error("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
+
     return s
 
 def handler(signum, frame):

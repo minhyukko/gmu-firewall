@@ -103,6 +103,9 @@ def setup_listener(s):
     s.bind(ne_address)
     s.listen(1)
 
+    #control_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    #socket.sendto('2', 'socket_fd/control.fd')
+
 def setup_socket(socket_address):
 
     try:
@@ -113,6 +116,9 @@ def setup_socket(socket_address):
     except socket.error as err:
         print("Socket creation has failed with error %s"%(err)) 
         sys.exit(1)
+
+    control_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    control_socket.sendto(b'2', 'socket_fd/control.fd')
     
     return s
 

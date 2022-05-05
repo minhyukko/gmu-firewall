@@ -53,6 +53,9 @@ def setup_listener(s):
     s.bind(ae_address)
     s.listen(1)
 
+    control_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    control_socket.sendto(b'1', 'socket_fd/control.fd')
+
 def implement_rule(msg):
     """
     Implements rule.
