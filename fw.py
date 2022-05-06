@@ -74,7 +74,7 @@ def setup_logging(filename):
                         filemode = 'w',
                         encoding = 'utf-8', 
                         level= logging.DEBUG,
-                        format='%(name)s - %(levelname)s - %(message)s')
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def handler(signum, frame):
     logging.info("Closing the Network Engine")
@@ -84,7 +84,7 @@ def handler(signum, frame):
 def log(info, do_print=False):
     logging.info(info)
     if do_print == True:
-        print(info)
+        #print(info)
 
 def main():
 

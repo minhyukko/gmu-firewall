@@ -12,7 +12,7 @@ import signal
 def main(argv):
     #setup simple signal handler
     signal.signal(signal.SIGINT, handler)
-
+    interface = argv [0]
 
     #setup logging
     ne_log =  './logs/ne.log'

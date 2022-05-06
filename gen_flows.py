@@ -108,6 +108,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
         
         ### We look to see if either key or key_inv is present. If neither is, create flow pased off of key
         if self.arr[i1] == None and self.arr[i2]==None:
+            logging.info("Create new flow (empty hm slot)::src IP:{}:dst IP:{}:src port:{}:dst port:{}".format(src, dst,sport,dport))
             self.arr[i1] = FlowNode(src, sport, dst, dport, time.time())
             self.arr[i1].packets.append(b_pkt)#Add payload to FlowNode - Replace Payload Line
             self.count += 1
@@ -178,6 +179,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
                     temp = temp.next
             if(not isfound):
                 ### Both hm slots have entries but none of them match the socket we are looking for, add to 1
+                logging.info("Create new flow::src IP:{}:dst IP:{}:src port:{}:dst port:{}".format(src, dst,sport,dport))
                 temp.next=FlowNode(src, sport, dst, dport, time.time())
                 temp = temp.next
                 temp.t = time.time()
@@ -193,7 +195,6 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
 
     def remove(self, key):#Removes a flow and saves the flow in json format
         ### A key is passed, no key is needed
-        logging.info("Remove: {}".format(self.count))
         #key = str(pkt['IP'].src) + str(pkt['TCP'].sport)+ str(pkt['IP'].dst) + str(pkt['TCP'].dport)
         i1 = hash(key) % self.capacity
         temp = self.arr[i1]
@@ -204,6 +205,7 @@ class HashMap:#Hashmap that holds a linked list of FlowNodes at each index
 #                logging.info("Sending Flow to server {}".format(socket)) 
                 #Sends the messages to the Server in the order expected(-> size, <- confirmation, -> data)
                 d = {'pkt':temp.packets, 'src':temp.source, 'dst':temp.destination, 'sport':temp.src_port, 'dport':temp.dst_port}
+                logging.info("Send flow to AE::src IP:{}:dst IP:{}:src port:{}:dst port:{}:Num Packets{}".format(temp.source, temp.destination,temp.src_port,temp.dst_port, len(temp.packets)))
                 data = json.dumps(d)
                 data = data.encode(encoding = 'UTF-8')
                 #print(type(data))
